@@ -49,7 +49,7 @@ export default async function BookingDetailPage({ params }: PageProps<"/coach/ca
   const name = client ? displayName(client) : (b.guest_name ?? b.guest_email ?? "Guest");
   const email = client?.email ?? b.guest_email;
   const phone = b.guest_phone ?? client?.phone;
-  const started = Date.parse(b.starts_at) <= Date.now();
+  const started = Date.parse(b.starts_at) <= new Date().getTime();
   const canCancel = (b.status === "confirmed" || b.status === "pending_payment") && !started;
   const canMark = ["confirmed", "completed", "no_show"].includes(b.status) && started;
   const localValue = formatDateTime(b.starts_at, tz, "yyyy-MM-dd'T'HH:mm");

@@ -71,7 +71,7 @@ export function SlotPicker({
   const [month, setMonth] = useState(initialMonth);
   const [pickedDate, setPickedDate] = useState<string | null>(null);
   const [state, setState] = useState<State | null>(null);
-  const timezones = useMemo(allTimezones, []);
+  const timezones = useMemo(() => allTimezones(), []);
 
   const from = `${month}-01`;
   const to = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;

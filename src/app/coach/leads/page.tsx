@@ -8,7 +8,7 @@ import { LEAD_SOURCES, LEAD_STATUSES, SOURCE_LABELS, STATUS_LABELS, optionLabel,
 import { formatDate } from "@/lib/format";
 import { fetchLeads } from "./query";
 import { QuickAddLead } from "./quick-add";
-import { FollowUp, LeadCard, ScoreBadge, StatusBadge, leadName, sourceLabel, type LeadRow } from "./lead-ui";
+import { FollowUp, LeadCard, isPast, ScoreBadge, StatusBadge, leadName, sourceLabel, type LeadRow } from "./lead-ui";
 import { moveLead } from "./actions";
 
 export const metadata: Metadata = { title: "Leads" };
@@ -30,10 +30,9 @@ export default async function LeadsPage({ searchParams }: PageProps<"/coach/lead
   const rows = (leads ?? []) as LeadRow[];
   const counts = new Map<string, number>();
   let dueCount = 0;
-  const now = Date.now();
   for (const r of statusRows ?? []) {
     counts.set(r.status, (counts.get(r.status) ?? 0) + 1);
-    if (r.next_follow_up_at && new Date(r.next_follow_up_at).getTime() <= now && !["converted", "lost", "unsubscribed"].includes(r.status)) dueCount++;
+    if (r.next_follow_up_at && isPast(r.next_follow_up_at) && !["converted", "lost", "unsubscribed"].includes(r.status)) dueCount++;
   }
   const total = statusRows?.length ?? 0;
   const campaigns = [...new Set((campaignRows ?? []).map((r) => r.utm_campaign!).filter(Boolean))].sort();

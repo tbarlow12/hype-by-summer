@@ -25,7 +25,6 @@ const MAX_LEN = 300;
 function clean(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   // Strip control characters and cap the length.
-  // eslint-disable-next-line no-control-regex
   const v = value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, MAX_LEN);
   return v || undefined;
 }

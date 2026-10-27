@@ -39,9 +39,12 @@ export function sourceLabel(source: string | null): string {
   return source ? (SOURCE_LABELS[source as LeadSource] ?? optionLabel(source)) : "Unknown";
 }
 
+/** Request-time clock (server components render once per request). */
+export const isPast = (iso: string) => new Date(iso).getTime() < Date.now();
+
 export function FollowUp({ at, timeZone }: { at: string | null; timeZone: string }) {
   if (!at) return null;
-  const overdue = new Date(at).getTime() < Date.now();
+  const overdue = isPast(at);
   return (
     <span className={cn("text-xs font-medium", overdue ? "text-red-600 dark:text-red-400" : "text-zinc-500")}>
       {overdue ? "Overdue: " : "Follow up "}
