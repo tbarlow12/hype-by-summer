@@ -268,6 +268,7 @@ const workoutPatch = z
     estimated_minutes: z.number().int().min(1).max(600).nullable(),
     week: z.number().int().min(1).max(104),
     day: z.number().int().min(1).max(7),
+    sort_order: z.number().int().min(0).max(1000),
   })
   .partial();
 

@@ -5,6 +5,7 @@ import { sendEmail } from "@/lib/email";
 import { notify } from "@/lib/notify";
 import { sendSystemMessage } from "@/lib/messaging";
 import { createVideoRoom } from "@/lib/video";
+import { sendSms, smsTargetForBooking, type SmsKind } from "@/lib/sms";
 import { refundBookingPayment, chargeBookingFee } from "@/lib/payments/refunds";
 import { absoluteUrl, BRAND_NAME, SITE_URL } from "@/lib/env";
 import { formatDateTime, formatDuration } from "@/lib/format";
@@ -136,6 +137,38 @@ async function safeSystemMessage(trainerId: string, clientId: string | null, bod
   }
 }
 
+/** Short SMS-friendly time, e.g. "Tue Oct 28 at 6:00 AM MDT" or "tomorrow (Tue) at 6:00 AM MDT". */
+export function smsWhen(startsAt: string, timeZone: string, now = new Date()): string {
+  const day = formatDateTime(startsAt, timeZone, "yyyy-MM-dd");
+  const today = formatDateTime(now, timeZone, "yyyy-MM-dd");
+  const tomorrow = formatDateTime(new Date(now.getTime() + 86_400_000), timeZone, "yyyy-MM-dd");
+  const time = formatDateTime(startsAt, timeZone, "h:mm a zzz");
+  if (day === today) return `today at ${time}`;
+  if (day === tomorrow) return `tomorrow (${formatDateTime(startsAt, timeZone, "EEE")}) at ${time}`;
+  return `${formatDateTime(startsAt, timeZone, "EEE MMM d")} at ${time}`;
+}
+
+/** Sends a booking SMS when the attendee consented (profile or booking opt-in). Never throws. */
+export async function sendBookingSms(ctx: BookingContext, kind: SmsKind, lead: string): Promise<boolean> {
+  try {
+    const target = await smsTargetForBooking(ctx.booking.id);
+    if (!target) return false;
+    const when = smsWhen(ctx.booking.starts_at, attendeeOf(ctx).timezone);
+    const parts = [`${lead}: ${ctx.sessionType.name} ${when}.`];
+    if (kind !== "cancellation") {
+      if (ctx.booking.location_type === "virtual" && ctx.booking.video_room_url) parts.push(`Join: ${ctx.booking.video_room_url}`);
+      parts.push(`Manage: ${manageUrl(ctx.booking)}`);
+    } else {
+      parts.push(`Rebook: ${absoluteUrl(`/book/${ctx.trainer.slug}`)}`);
+    }
+    const res = await sendSms({ to: target.phone, body: parts.join(" "), kind, profileId: target.profileId, bookingId: ctx.booking.id });
+    return res.ok;
+  } catch (err) {
+    console.error("[scheduling] sms failed", err);
+    return false;
+  }
+}
+
 /**
  * Called once a booking becomes `confirmed` (free, credits, pay later, or after
  * Stripe payment). Creates the video room for virtual sessions and sends the
@@ -231,6 +264,7 @@ export async function onBookingConfirmed(bookingId: string): Promise<void> {
       link: "/me/bookings",
     });
   }
+  await sendBookingSms(ctx, "confirmation", rescheduled ? "Rescheduled" : "Booked");
   await safeSystemMessage(
     booking.trainer_id,
     await linkedClientId(ctx),
@@ -358,7 +392,10 @@ export async function cancelBooking(input: {
         body: `${sessionType.name} · ${whenTrainer}`,
         link: `/coach/calendar/${booking.id}`,
       });
-    } else if (booking.client_id) {
+    } else {
+      await sendBookingSms(ctx, "cancellation", `${trainerName(trainer)} cancelled`);
+    }
+    if (isTrainer && booking.client_id) {
       await notify({
         userId: booking.client_id,
         type: "booking_cancelled",

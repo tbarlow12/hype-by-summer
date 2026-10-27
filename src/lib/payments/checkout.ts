@@ -114,7 +114,12 @@ export async function createBookingCheckout(bookingId: string): Promise<{ url: s
       allow_promotion_codes: true,
       expires_at: expiresAt,
       success_url: absoluteUrl(`/booking/${booking.manage_token}?status=success&session_id={CHECKOUT_SESSION_ID}`),
-      cancel_url: absoluteUrl(storefront ? `/book/${storefront.slug}?checkout=cancelled` : `/booking/${booking.manage_token}?status=cancelled`),
+      // Back to the session type's booking page to pick again / retry.
+      cancel_url: absoluteUrl(
+        storefront && sessionType
+          ? `/book/${storefront.slug}/${sessionType.slug}?checkout=cancelled`
+          : `/booking/${booking.manage_token}?status=cancelled`,
+      ),
       ...taxParams(Boolean(customerId)),
     },
     { idempotencyKey: `booking-checkout:${booking.id}:${expiresAt}` },

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui";
+import { NotificationsBell } from "@/components/notifications-bell";
 import { BRAND_NAME } from "@/lib/env";
 import { NavLinks, type NavItem } from "./nav-links";
 
@@ -23,7 +24,10 @@ export function AppShell({
             <Link href="/" className="text-lg font-extrabold tracking-tight text-brand">
               {BRAND_NAME}
             </Link>
-            {badge}
+            <div className="flex items-center gap-1">
+              {badge}
+              <NotificationsBell />
+            </div>
           </div>
           <NavLinks items={nav} />
           <div className="mt-auto hidden items-center gap-3 border-t border-zinc-200 px-5 py-4 lg:flex dark:border-zinc-800">

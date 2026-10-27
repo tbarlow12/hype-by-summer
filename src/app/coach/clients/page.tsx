@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireTrainer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { trainerCreditBalances } from "@/lib/clients/queries";
 import { Avatar, Badge, Button, Card, EmptyState, Input, PageHeader, Select, Table } from "@/components/ui";
 import { displayName, formatDate, formatDateTime, titleCase } from "@/lib/format";
 import { isLowOnCredits, LIVE_SUBSCRIPTION_STATUSES, localDateString, addDaysToDateString, matchesSearch } from "@/lib/clients/metrics";
@@ -31,7 +32,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/coach/cl
       .from("trainer_clients")
       .select("client_id, status, tags, started_at, profiles!trainer_clients_client_id_fkey(full_name, email, avatar_url, phone)")
       .eq("trainer_id", trainer.id),
-    supabase.rpc("trainer_client_credit_balances", { p_trainer: trainer.id }),
+    trainerCreditBalances(supabase, trainer.id).then((data) => ({ data })),
     supabase
       .from("bookings")
       .select("client_id, starts_at")

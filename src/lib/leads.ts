@@ -5,7 +5,7 @@ import { readAttribution, type Attribution } from "@/lib/attribution";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { absoluteUrl, BRAND_NAME } from "@/lib/env";
 import { sendEmail } from "@/lib/email";
-import { clientInfoFromHeaders } from "@/lib/leads/headers";
+import { clientInfoFromHeaders, type ClientInfo } from "@/lib/leads/headers";
 import { scoreLead } from "@/lib/leads/score";
 import { expiresInDays, signDownloadToken, verifyDownloadToken, type VerifyResult } from "@/lib/leads/tokens";
 
@@ -36,6 +36,8 @@ export type CaptureLeadInput = {
   ipAddress?: string;
   userAgent?: string;
   country?: string;
+  /** Don't read ip/user-agent/country from the current request (e.g. a trainer adding a lead). */
+  skipRequestInfo?: boolean;
 };
 
 export type Lead = Tables<"leads">;
@@ -45,7 +47,7 @@ const clean = (v: string | undefined | null, max = 2000) => {
   return s ? s.slice(0, max) : undefined;
 };
 
-async function requestInfo() {
+async function requestInfo(): Promise<ClientInfo> {
   try {
     return clientInfoFromHeaders(await headers());
   } catch {
@@ -66,7 +68,7 @@ export async function captureLead(input: CaptureLeadInput): Promise<Tables<"lead
       attribution = {};
     }
   }
-  const info = await requestInfo();
+  const info: ClientInfo = input.skipRequestInfo ? {} : await requestInfo();
   const last = attribution.lastTouch;
   const lastTouch = last
     ? Object.fromEntries(

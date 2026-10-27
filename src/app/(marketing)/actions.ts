@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
 import { captureLead, deliverLeadMagnet, recordLeadEvent } from "@/lib/leads";
@@ -9,9 +10,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { BRAND_NAME, absoluteUrl } from "@/lib/env";
 import { getPrimaryTrainer } from "@/lib/trainer";
 import { consultHref, getPublicSessionTypes } from "@/lib/marketing";
-import { consentText, EXPERIENCE_LEVELS, FORMATS, GOALS, TIMELINES, values } from "@/lib/leads/options";
+import { consentText, EXPERIENCE_LEVELS, FORMATS, GOALS, TIMELINES, values, type Option } from "@/lib/leads/options";
 
-const optionalEnum = (opts: { value: string }[]) =>
+const optionalEnum = (opts: Option[]) =>
   z
     .union([z.literal(""), z.enum(values(opts))])
     .optional()
@@ -144,5 +145,6 @@ export async function unsubscribeAction(_prev: ActionState, formData: FormData):
   if (!/^[0-9a-f]{20,80}$/i.test(token)) return fail("This unsubscribe link is invalid.");
   const { data, error } = await createAdminClient().rpc("unsubscribe_lead", { p_token: token });
   if (error || !data?.id) return fail("This unsubscribe link is invalid or has expired.");
+  revalidatePath(`/unsubscribe/${token}`);
   return ok("You're unsubscribed. You won't receive any more marketing emails from us.");
 }

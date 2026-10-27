@@ -178,3 +178,48 @@ export async function trySystemMessage(input: { trainerId: string; clientId: str
     console.error("[training] sendSystemMessage failed", err);
   }
 }
+
+export type LogWithSets = Tables<"workout_logs"> & {
+  sets: {
+    exercise_id: string;
+    set_number: number;
+    reps: number | null;
+    weight: number | null;
+    weight_unit: string;
+    duration_seconds: number | null;
+    rpe: number | null;
+    completed: boolean;
+    exercise_name: string;
+  }[];
+  workout: { name: string; week: number; day: number; program_id: string } | null;
+};
+
+/** Workout logs (newest first) with their sets and the program workout they belong to. */
+export async function loadLogs(
+  supabase: Supabase,
+  opts: { clientId: string; programId?: string; limit?: number },
+): Promise<LogWithSets[]> {
+  let query = supabase
+    .from("workout_logs")
+    .select(
+      "*, set_logs(exercise_id, set_number, reps, weight, weight_unit, duration_seconds, rpe, completed, exercise:exercises(name)), workout:program_workouts" +
+        (opts.programId ? "!inner" : "") +
+        "(name, week, day, program_id)",
+    )
+    .eq("client_id", opts.clientId)
+    .order("performed_on", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(opts.limit ?? 20);
+  if (opts.programId) query = query.eq("workout.program_id", opts.programId);
+  const { data } = await query;
+  type Raw = Tables<"workout_logs"> & {
+    set_logs: (Omit<LogWithSets["sets"][number], "exercise_name"> & { exercise: { name: string } | null })[];
+    workout: LogWithSets["workout"];
+  };
+  return ((data ?? []) as unknown as Raw[]).map(({ set_logs, ...log }) => ({
+    ...log,
+    sets: (set_logs ?? [])
+      .map(({ exercise, ...s }) => ({ ...s, weight: s.weight == null ? null : Number(s.weight), exercise_name: exercise?.name ?? "Exercise" }))
+      .sort((a, b) => a.set_number - b.set_number),
+  }));
+}

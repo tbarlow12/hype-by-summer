@@ -311,6 +311,8 @@ export type Database = {
           id: string;
           recipient_count: number;
           sent_at: string | null;
+          sms_body: string | null;
+          sms_sent: number;
           subject: string;
           trainer_id: string;
         };
@@ -324,6 +326,8 @@ export type Database = {
           id?: string;
           recipient_count?: number;
           sent_at?: string | null;
+          sms_body?: string | null;
+          sms_sent?: number;
           subject: string;
           trainer_id: string;
         };
@@ -337,6 +341,8 @@ export type Database = {
           id?: string;
           recipient_count?: number;
           sent_at?: string | null;
+          sms_body?: string | null;
+          sms_sent?: number;
           subject?: string;
           trainer_id?: string;
         };

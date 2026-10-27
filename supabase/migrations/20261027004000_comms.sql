@@ -154,7 +154,9 @@ create index if not exists notifications_unread on public.notifications (user_id
 -- ---------------------------------------------------------------------------
 alter table public.broadcasts
   add column if not exists emails_sent int not null default 0,
-  add column if not exists emails_failed int not null default 0;
+  add column if not exists emails_failed int not null default 0,
+  add column if not exists sms_sent int not null default 0,
+  add column if not exists sms_body text check (char_length(sms_body) <= 300);
 create index if not exists broadcasts_trainer_created on public.broadcasts (trainer_id, created_at desc);
 
 -- Realtime: read receipts need conversation updates.
