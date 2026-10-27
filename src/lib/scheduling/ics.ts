@@ -75,7 +75,7 @@ export function buildIcs(calendar: IcsCalendar): string {
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    `PRODID:${calendar.prodId ?? "-//Hype by Summer//Booking//EN"}`,
+    `PRODID:${calendar.prodId ?? "-//HYPE by Summer//Booking//EN"}`,
     "CALSCALE:GREGORIAN",
     `METHOD:${calendar.method ?? "PUBLISH"}`,
   ];

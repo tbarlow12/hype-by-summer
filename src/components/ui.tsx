@@ -5,7 +5,7 @@ import { initials } from "@/lib/format";
 
 export const cn = clsx;
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline" | "inverse";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline" | "inverse" | "white";
 type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
@@ -16,16 +16,18 @@ const variants: Record<Variant, string> = {
   danger: "bg-red-600 text-white hover:bg-red-700",
   /** Outline button for dark backgrounds (hero sections). */
   inverse: "border border-white/30 bg-white/5 text-white hover:bg-white/10",
+  /** Solid white button for dark or brand-colored sections. */
+  white: "bg-white text-zinc-900 hover:bg-zinc-100 shadow-sm",
 };
 const sizes: Record<Size, string> = {
-  sm: "h-8 px-3 text-sm",
-  md: "h-10 px-4 text-sm",
-  lg: "h-12 px-6 text-base",
+  sm: "h-8 px-3.5 text-sm",
+  md: "h-10 px-5 text-[15px]",
+  lg: "h-12 px-7 text-lg",
 };
 
 export function buttonClass(variant: Variant = "primary", size: Size = "md", extra?: string) {
   return cn(
-    "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+    "inline-flex items-center justify-center gap-2 rounded-full font-display font-bold uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
     variants[variant],
     sizes[size],
     extra,

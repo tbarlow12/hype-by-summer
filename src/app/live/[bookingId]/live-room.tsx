@@ -104,7 +104,7 @@ export function LiveRoom({
         ) : null}
         <div className="flex gap-2">
           {chatHref ? (
-            <Link href={chatHref} className={buttonClass("ghost", "sm", "text-zinc-300 hover:bg-zinc-800 hover:text-white")}>
+            <Link href={chatHref} className={buttonClass("inverse", "sm")}>
               Chat
             </Link>
           ) : null}

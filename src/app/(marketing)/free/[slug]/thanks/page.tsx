@@ -89,7 +89,7 @@ export default async function ThanksPage({ params, searchParams }: PageProps<"/f
               <LinkButton href={bookHref} size="lg">
                 Book my free consult
               </LinkButton>
-              <Link href="/" className={buttonClass("ghost", "lg", "text-white hover:bg-white/10 dark:hover:bg-white/10")}>
+              <Link href="/" className={buttonClass("inverse", "lg")}>
                 Explore coaching
               </Link>
             </div>

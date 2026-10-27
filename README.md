@@ -1,4 +1,4 @@
-# Hype by Summer
+# HYPE by Summer
 
 A complete platform for a personal-training business: Calendly-style booking, Stripe payments
 (sessions, packs, memberships, one-off products), client coaching (programs, workout logging,

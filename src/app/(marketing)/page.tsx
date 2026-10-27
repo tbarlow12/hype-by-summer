@@ -144,7 +144,7 @@ export default async function HomePage() {
               ) : (
                 <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold ring-1 ring-white/20">Waitlist open</span>
               )}
-              <span className="text-xs font-medium text-zinc-400">{where}</span>
+              <span className="text-xs font-medium text-zinc-300">{where}</span>
             </div>
             <h1 className="mt-6 text-5xl font-black leading-[0.95] tracking-tight text-balance sm:text-7xl">
               {trainer.headline ?? (
@@ -169,10 +169,10 @@ export default async function HomePage() {
               <dl className="mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-white/10 pt-8">
                 {heroStats.map((stat) => (
                   <div key={stat.label}>
-                    <dt className="text-xs uppercase tracking-wide text-zinc-400">{stat.label}</dt>
+                    <dt className="text-xs uppercase tracking-wide text-zinc-300">{stat.label}</dt>
                     <dd className="mt-1 text-2xl font-black">
                       {stat.value}
-                      {stat.suffix ? <span className="ml-1 text-sm font-medium text-zinc-400">{stat.suffix}</span> : null}
+                      {stat.suffix ? <span className="ml-1 text-sm font-medium text-zinc-300">{stat.suffix}</span> : null}
                     </dd>
                   </div>
                 ))}
@@ -310,7 +310,7 @@ export default async function HomePage() {
             },
           ].map((step, i) => (
             <li key={step.title} className="relative rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800">
-              <span className="text-6xl font-black leading-none text-brand/20">{String(i + 1).padStart(2, "0")}</span>
+              <span aria-hidden="true" className="text-6xl font-black leading-none text-brand/20">{String(i + 1).padStart(2, "0")}</span>
               <h3 className="mt-4 text-xl font-bold tracking-tight">{step.title}</h3>
               <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{step.body.replace(/\s+/g, " ")}</p>
             </li>
@@ -337,7 +337,7 @@ export default async function HomePage() {
               <figure key={t.id} className="mb-5 break-inside-avoid rounded-2xl bg-white/5 p-6 ring-1 ring-white/10">
                 {t.rating ? <Stars rating={t.rating} /> : null}
                 <blockquote className="mt-3 text-zinc-100">&ldquo;{t.body}&rdquo;</blockquote>
-                <figcaption className="mt-4 text-sm font-semibold text-zinc-400">{t.author_name}</figcaption>
+                <figcaption className="mt-4 text-sm font-semibold text-zinc-300">{t.author_name}</figcaption>
               </figure>
             ))}
           </div>
@@ -419,14 +419,14 @@ export default async function HomePage() {
         <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-brand px-6 py-14 text-center text-white sm:px-12 sm:py-20">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.25),transparent_45%)]" aria-hidden="true" />
           <h2 className="relative text-4xl font-black tracking-tight text-balance sm:text-6xl">Your strongest season starts now.</h2>
-          <p className="relative mx-auto mt-4 max-w-xl text-lg text-white/85">
+          <p className="relative mx-auto mt-4 max-w-xl text-lg text-white">
             Book a free consult with {first}. No pressure, no commitment, just a plan.
           </p>
           <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href={consult} className={buttonClass("secondary", "lg", "bg-white text-zinc-900 hover:bg-zinc-100 dark:bg-white dark:text-zinc-900")}>
+            <Link href={consult} className={buttonClass("white", "lg")}>
               Book a free consult
             </Link>
-            <Link href="#contact" className={buttonClass("ghost", "lg", "text-white ring-1 ring-white/40 hover:bg-white/10 dark:text-white dark:hover:bg-white/10")}>
+            <Link href="#contact" className={buttonClass("inverse", "lg")}>
               Ask a question
             </Link>
           </div>

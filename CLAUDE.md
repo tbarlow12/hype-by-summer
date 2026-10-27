@@ -1,4 +1,4 @@
-# Hype by Summer
+# HYPE by Summer
 
 Personal-training business platform: Next.js 16 App Router + Supabase + Stripe, TypeScript only.
 Read `AGENTS.md` (Next 16 differs from older versions: `proxy.ts` not middleware, async request APIs;

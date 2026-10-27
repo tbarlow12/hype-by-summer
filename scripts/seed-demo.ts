@@ -50,7 +50,7 @@ async function main() {
     {
       trainer_id: coachId,
       slug: SLUG,
-      business_name: "Hype by Summer",
+      business_name: "HYPE by Summer",
       headline: "Strong, confident, and consistent: training that fits your life",
       bio: "Certified personal trainer helping busy people build strength, lose fat, and actually enjoy the process. In-person in Denver or online anywhere.",
       specialties: ["Strength training", "Fat loss", "Postpartum fitness", "Beginner friendly"],
