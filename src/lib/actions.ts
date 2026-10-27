@@ -38,7 +38,12 @@ export const zfd = {
   int: () => z.coerce.number().int(),
   optionalInt: () =>
     z.union([z.literal(""), z.coerce.number().int()]).optional().transform((v) => (v === "" || v === undefined ? undefined : v)),
-  checkbox: () => z.union([z.literal("on"), z.literal("true"), z.literal("false"), z.undefined()]).transform((v) => v === "on" || v === "true"),
+  // .optional() (not z.undefined() in the union): zod 4 only treats a missing key as valid when the schema is optional.
+  checkbox: () =>
+    z
+      .union([z.literal("on"), z.literal("true"), z.literal("false")])
+      .optional()
+      .transform((v) => v === "on" || v === "true"),
   /** Dollars string ("49.99") -> integer cents. */
   cents: () => z.coerce.number().min(0).transform((v) => Math.round(v * 100)),
 };
