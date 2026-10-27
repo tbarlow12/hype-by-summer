@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Alert, Button, Card, Checkbox, Field, Input, Select, Textarea, cn } from "@/components/ui";
 import { previewAudience, sendBroadcast, type AudiencePreview } from "./actions";
 
+type AudienceValue = Parameters<typeof sendBroadcast>[0]["audience"];
+
 type Channel = "in_app" | "email" | "sms";
 
 export function BroadcastComposer({ audiences }: { audiences: { value: string; label: string }[] }) {
@@ -14,8 +16,9 @@ export function BroadcastComposer({ audiences }: { audiences: { value: string; l
   const [body, setBody] = useState("");
   const [smsBody, setSmsBody] = useState("");
   const [channels, setChannels] = useState<Channel[]>(["in_app", "email"]);
-  const [preview, setPreview] = useState<AudiencePreview | null>(null);
-  const [previewing, setPreviewing] = useState(false);
+  const [loaded, setLoaded] = useState<{ audience: string; preview: AudiencePreview | null } | null>(null);
+  const preview = loaded?.audience === audience ? loaded.preview : null;
+  const previewing = loaded?.audience !== audience;
   const [showPreview, setShowPreview] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [sending, startSend] = useTransition();
@@ -23,11 +26,8 @@ export function BroadcastComposer({ audiences }: { audiences: { value: string; l
 
   useEffect(() => {
     let active = true;
-    setPreviewing(true);
     void previewAudience(audience).then((res) => {
-      if (!active) return;
-      setPreviewing(false);
-      setPreview(res.ok ? res.preview : null);
+      if (active) setLoaded({ audience, preview: res.ok ? res.preview : null });
     });
     return () => {
       active = false;
@@ -45,7 +45,7 @@ export function BroadcastComposer({ audiences }: { audiences: { value: string; l
     const n = preview?.total ?? 0;
     if (!window.confirm(`Send "${subject}" to ${n} ${n === 1 ? "person" : "people"}? This can't be undone.`)) return;
     startSend(async () => {
-      const res = await sendBroadcast({ audience, subject, body, smsBody: smsBody.trim() || undefined, channels: effective });
+      const res = await sendBroadcast({ audience: audience as AudienceValue, subject, body, smsBody: smsBody.trim() || undefined, channels: effective });
       if (res.ok) {
         setResult({ ok: true, text: res.message });
         setSubject("");
@@ -72,8 +72,10 @@ export function BroadcastComposer({ audiences }: { audiences: { value: string; l
         </Field>
 
         <div className="rounded-xl bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-950" aria-live="polite">
-          {previewing || !preview ? (
+          {previewing ? (
             <span className="text-zinc-500">Counting recipients…</span>
+          ) : !preview ? (
+            <span className="text-red-600">Couldn&apos;t count recipients. Reload and try again.</span>
           ) : (
             <>
               <span className="font-semibold">{preview.total}</span> recipient{preview.total === 1 ? "" : "s"}

@@ -223,3 +223,15 @@ export async function loadLogs(
       .sort((a, b) => a.set_number - b.set_number),
   }));
 }
+
+/** Preferred weight unit: from the client's latest body metrics entry. */
+export async function preferredUnit(supabase: Supabase, clientId: string): Promise<"lb" | "kg"> {
+  const { data } = await supabase
+    .from("body_metrics")
+    .select("unit_system")
+    .eq("client_id", clientId)
+    .order("measured_on", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.unit_system === "metric" ? "kg" : "lb";
+}

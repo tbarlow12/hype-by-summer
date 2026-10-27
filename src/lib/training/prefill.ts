@@ -69,3 +69,20 @@ export function buildPrefill(
     };
   });
 }
+
+/** "95lb×8, 100lb×8" style summary of logged sets. */
+export function summarizeSets(
+  sets: { reps: number | null; weight: number | null; weight_unit: string; duration_seconds?: number | null }[],
+): string {
+  return sets
+    .map((s) =>
+      s.weight != null && s.reps != null
+        ? `${Number(s.weight)}${s.weight_unit}×${s.reps}`
+        : s.reps != null
+          ? `${s.reps} reps`
+          : s.duration_seconds != null
+            ? `${s.duration_seconds}s`
+            : "–",
+    )
+    .join(", ");
+}

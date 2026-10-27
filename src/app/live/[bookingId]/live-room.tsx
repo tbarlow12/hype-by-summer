@@ -66,9 +66,13 @@ export function LiveRoom({
   const [pending, start] = useTransition();
 
   useEffect(() => {
-    setNow(new Date());
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
+    const tick = () => setNow(new Date());
+    const first = setTimeout(tick, 0);
+    const t = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(t);
+    };
   }, []);
 
   const clock = now ? sessionClock(startsAt, endsAt, now) : null;

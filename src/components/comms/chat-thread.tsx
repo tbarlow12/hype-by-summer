@@ -388,7 +388,6 @@ export function ChatThread({
   const lastMine = [...messages].reverse().find((m) => m.sender_id === viewerId && m.kind !== "system" && !m.status);
   const seen = Boolean(lastMine && otherReadAt && otherReadAt >= lastMine.created_at);
 
-  let prevDay = "";
   return (
     <div className="flex h-[calc(100dvh-9rem)] min-h-[440px] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm lg:h-[calc(100dvh-8rem)] dark:border-zinc-800 dark:bg-zinc-900">
       {/* Header */}
@@ -446,8 +445,9 @@ export function ChatThread({
             </p>
           </div>
         ) : null}
-        {messages.map((m) => {
+        {messages.map((m, i) => {
           const day = dayKey(m.created_at, timezone);
+          const prevDay = i > 0 ? dayKey(messages[i - 1]!.created_at, timezone) : "";
           const separator =
             day !== prevDay ? (
               <div className="flex items-center gap-3 py-3 text-xs font-medium text-zinc-500" role="separator">
@@ -456,7 +456,6 @@ export function ChatThread({
                 <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
               </div>
             ) : null;
-          prevDay = day;
           return (
             <Fragment key={m.id}>
               {separator}

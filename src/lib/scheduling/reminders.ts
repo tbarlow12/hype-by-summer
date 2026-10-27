@@ -45,7 +45,7 @@ async function sendReminders(report: CronReport, now: Date) {
         .from("bookings")
         .update({ reminders_sent: [...new Set([...b.reminders_sent, ...due.mark])] })
         .eq("id", b.id)
-        .eq("reminders_sent", `{${b.reminders_sent.join(",")}}`)
+        .filter("reminders_sent", "eq", `{${b.reminders_sent.join(",")}}`)
         .select("id")
         .maybeSingle();
       if (!claimed || due.send === null) continue;
