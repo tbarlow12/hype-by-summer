@@ -35,4 +35,7 @@ describe("checkEnv", () => {
     expect(p.find((x) => x.level === "error")!.message).toMatch(/STRIPE_WEBHOOK_SECRET/);
     expect(p.find((x) => x.level === "warning")!.message).toMatch(/RESEND_API_KEY/);
   });
+  it("accepts Vercel's production URL in place of NEXT_PUBLIC_SITE_URL", () => {
+    expect(checkEnv({ ...complete, NEXT_PUBLIC_SITE_URL: undefined, VERCEL_PROJECT_PRODUCTION_URL: "hype.vercel.app" })).toEqual([]);
+  });
 });

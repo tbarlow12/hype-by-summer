@@ -26,7 +26,7 @@ export function checkEnv(env: Env): EnvProblem[] {
   } else if (secret.startsWith("sb_publishable_")) {
     error("SUPABASE_SECRET_KEY is set to the publishable key; use the secret key (sb_secret_…).");
   }
-  if (!has(env, "NEXT_PUBLIC_SITE_URL")) {
+  if (!has(env, "NEXT_PUBLIC_SITE_URL", "NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_PROJECT_PRODUCTION_URL")) {
     error("NEXT_PUBLIC_SITE_URL is missing (e.g. https://yourdomain.com). Email links and Stripe redirects use it.");
   }
   if (!has(env, "OWNER_EMAIL")) {
