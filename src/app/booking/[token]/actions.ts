@@ -7,6 +7,7 @@ import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fail, ok, parseForm, type ActionState } from "@/lib/actions";
 import { cancelBooking, rescheduleBooking, type Actor } from "@/lib/scheduling/lifecycle";
+import { createBookingCheckout } from "@/lib/payments/checkout";
 
 const token = z.string().regex(/^[a-f0-9]{16,64}$/, "Invalid link");
 
@@ -41,4 +42,27 @@ export async function rescheduleByTokenAction(_: ActionState, formData: FormData
   if (!res.ok) return fail(res.error);
   revalidatePath("/me/bookings");
   redirect(`/booking/${res.booking.manage_token}?status=rescheduled`);
+}
+
+/** Resume Stripe Checkout for a held, unpaid booking (e.g. after backing out of checkout). */
+export async function payByTokenAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = parseForm(z.object({ token }), formData);
+  if (parsed.error) return parsed.error;
+  const { data: booking } = await createAdminClient()
+    .from("bookings")
+    .select("id, status, hold_expires_at")
+    .eq("manage_token", parsed.data.token)
+    .maybeSingle();
+  if (!booking || booking.status !== "pending_payment") return fail("This booking no longer needs payment.");
+  if (!booking.hold_expires_at || new Date(booking.hold_expires_at) <= new Date()) {
+    return fail("This hold has expired. Please pick a time again.");
+  }
+  let url: string;
+  try {
+    ({ url } = await createBookingCheckout(booking.id));
+  } catch (err) {
+    console.error("[booking] resume checkout failed", err);
+    return fail("We couldn't start checkout. Please try again.");
+  }
+  redirect(url);
 }

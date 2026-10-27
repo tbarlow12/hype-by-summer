@@ -61,10 +61,7 @@ export async function createBookingCheckout(bookingId: string): Promise<{ url: s
   }
 
   const sessionType = booking.session_types;
-  const [{ data: storefront }, { data: trainer }] = await Promise.all([
-    admin.from("trainer_profiles").select("slug").eq("trainer_id", booking.trainer_id).maybeSingle(),
-    admin.from("profiles").select("timezone").eq("id", booking.trainer_id).maybeSingle(),
-  ]);
+  const { data: trainer } = await admin.from("profiles").select("timezone").eq("id", booking.trainer_id).maybeSingle();
   const tz = booking.client_timezone ?? trainer?.timezone ?? "UTC";
   const currency = (sessionType?.currency ?? "usd").toLowerCase();
 
@@ -114,12 +111,8 @@ export async function createBookingCheckout(bookingId: string): Promise<{ url: s
       allow_promotion_codes: true,
       expires_at: expiresAt,
       success_url: absoluteUrl(`/booking/${booking.manage_token}?status=success&session_id={CHECKOUT_SESSION_ID}`),
-      // Back to the session type's booking page to pick again / retry.
-      cancel_url: absoluteUrl(
-        storefront && sessionType
-          ? `/book/${storefront.slug}/${sessionType.slug}?checkout=cancelled`
-          : `/booking/${booking.manage_token}?status=cancelled`,
-      ),
+      // The manage page explains the hold and offers to retry payment or cancel.
+      cancel_url: absoluteUrl(`/booking/${booking.manage_token}?status=cancelled`),
       ...taxParams(Boolean(customerId)),
     },
     { idempotencyKey: `booking-checkout:${booking.id}:${expiresAt}` },

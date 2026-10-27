@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ActionForm, SubmitButton } from "@/components/form";
 import { Alert, Badge, Card, CardTitle, Checkbox, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { ImageUpload } from "@/components/clients/image-upload";
+import { TestimonialForm } from "@/components/testimonial-form";
 import { formatDateTime } from "@/lib/format";
 import { BRAND_NAME } from "@/lib/env";
 import { EXPERIENCE_LEVELS, PARQ_QUESTIONS, PRIMARY_GOALS, parqFlags, readParqAnswers } from "@/lib/clients/intake";
@@ -222,6 +223,14 @@ export default async function ProfilePage() {
           </ActionForm>
         ) : null}
       </Card>
+
+      {trainerId ? (
+        <Card>
+          <CardTitle>Leave a review</CardTitle>
+          <p className="mb-4 mt-1 text-sm text-zinc-500">Enjoying your training? A short review helps others find {businessName}.</p>
+          <TestimonialForm defaultName={profile.full_name} />
+        </Card>
+      ) : null}
     </div>
   );
 }

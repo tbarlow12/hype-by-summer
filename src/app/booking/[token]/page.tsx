@@ -10,7 +10,7 @@ import { attendeeOf, googleCalendarLink, loadBookingContext, locationText, train
 import { canReschedule, decideCancellation, describePolicy } from "@/lib/scheduling/policy";
 import { STATUS_LABELS, STATUS_TONES } from "@/lib/scheduling/labels";
 import { localDateOf } from "@/lib/scheduling/tz";
-import { cancelByTokenAction, rescheduleByTokenAction } from "./actions";
+import { cancelByTokenAction, payByTokenAction, rescheduleByTokenAction } from "./actions";
 
 export const metadata = { title: "Your booking", robots: { index: false } };
 
@@ -120,6 +120,12 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
           <p className="mt-4 text-sm text-zinc-500">
             Your spot is held until {formatDateTime(booking.hold_expires_at, tz, "h:mm a")}. Complete payment to confirm it.
           </p>
+        ) : null}
+        {booking.status === "pending_payment" && booking.hold_expires_at && new Date(booking.hold_expires_at) > new Date() ? (
+          <ActionForm action={payByTokenAction} className="mt-3">
+            <input type="hidden" name="token" value={booking.manage_token} />
+            <SubmitButton pendingLabel="Opening checkout…">Complete payment</SubmitButton>
+          </ActionForm>
         ) : null}
       </Card>
 

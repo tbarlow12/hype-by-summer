@@ -96,6 +96,11 @@ begin
   assert (select trainer_response from public.workout_logs where id = log) is null, 'client cannot set response';
   assert (select feedback from public.workout_logs where id = log) = 'Knee felt off (edited)', 'client edits own feedback';
 
+  -- Check-ins: a client can't pre-fill the coach's reply.
+  insert into public.check_ins (client_id, trainer_id, week_of, sleep_quality, trainer_response)
+  values (auth.uid(), '00000000-0000-0000-0000-0000000000a1', '2030-01-07', 4, 'fake reply');
+  assert (select trainer_response from public.check_ins where client_id = auth.uid()) is null, 'check-in reply stripped';
+
   insert into public.program_feedback (program_id, client_id, week, overall_rating, difficulty)
   values ((select v from t30 where k = 'assigned'), auth.uid(), 1, 4, 'too_hard');
   begin
@@ -118,6 +123,9 @@ begin
   assert (select pain_flag from public.workout_logs where id = log), 'pain flag untouched';
   update public.program_feedback set trainer_response = 'Will adjust' where client_id = '00000000-0000-0000-0000-0000000000b1';
   assert (select trainer_response from public.program_feedback limit 1) = 'Will adjust', 'feedback response saved';
+  update public.check_ins set trainer_response = 'Great week', sleep_quality = 1 where trainer_id = auth.uid();
+  assert (select sleep_quality from public.check_ins where trainer_id = auth.uid()) = 4, 'trainer cannot edit ratings';
+  assert (select trainer_response from public.check_ins where trainer_id = auth.uid()) = 'Great week', 'check-in reply saved';
 end $$;
 
 -- Another client sees none of it and cannot use the builder RPCs on it.

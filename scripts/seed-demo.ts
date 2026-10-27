@@ -34,9 +34,10 @@ async function ensureUser(email: string, fullName: string): Promise<string> {
   return data.user.id;
 }
 
-function must<T>(res: { data: T | null; error: unknown }): T {
+function must<T>(res: { data: T; error: unknown }): NonNullable<T> {
   if (res.error) throw res.error;
-  return res.data as T;
+  if (res.data == null) throw new Error("no data returned");
+  return res.data as NonNullable<T>;
 }
 
 async function main() {
