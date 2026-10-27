@@ -154,6 +154,8 @@ export type Database = {
           cancelled_by: string | null;
           client_id: string | null;
           client_notes: string | null;
+          client_timezone: string | null;
+          confirmation_sent_at: string | null;
           created_at: string;
           credits_used: number;
           ends_at: string;
@@ -172,6 +174,7 @@ export type Database = {
           reminders_sent: number[];
           rescheduled_from: string | null;
           session_type_id: string;
+          sms_opt_in: boolean;
           starts_at: string;
           status: Database["public"]["Enums"]["booking_status"];
           stripe_checkout_session_id: string | null;
@@ -187,6 +190,8 @@ export type Database = {
           cancelled_by?: string | null;
           client_id?: string | null;
           client_notes?: string | null;
+          client_timezone?: string | null;
+          confirmation_sent_at?: string | null;
           created_at?: string;
           credits_used?: number;
           ends_at: string;
@@ -205,6 +210,7 @@ export type Database = {
           reminders_sent?: number[];
           rescheduled_from?: string | null;
           session_type_id: string;
+          sms_opt_in?: boolean;
           starts_at: string;
           status?: Database["public"]["Enums"]["booking_status"];
           stripe_checkout_session_id?: string | null;
@@ -220,6 +226,8 @@ export type Database = {
           cancelled_by?: string | null;
           client_id?: string | null;
           client_notes?: string | null;
+          client_timezone?: string | null;
+          confirmation_sent_at?: string | null;
           created_at?: string;
           credits_used?: number;
           ends_at?: string;
@@ -238,6 +246,7 @@ export type Database = {
           reminders_sent?: number[];
           rescheduled_from?: string | null;
           session_type_id?: string;
+          sms_opt_in?: boolean;
           starts_at?: string;
           status?: Database["public"]["Enums"]["booking_status"];
           stripe_checkout_session_id?: string | null;
@@ -297,6 +306,8 @@ export type Database = {
           body: string;
           channels: Database["public"]["Enums"]["notification_channel"][];
           created_at: string;
+          emails_failed: number;
+          emails_sent: number;
           id: string;
           recipient_count: number;
           sent_at: string | null;
@@ -308,6 +319,8 @@ export type Database = {
           body: string;
           channels?: Database["public"]["Enums"]["notification_channel"][];
           created_at?: string;
+          emails_failed?: number;
+          emails_sent?: number;
           id?: string;
           recipient_count?: number;
           sent_at?: string | null;
@@ -319,6 +332,8 @@ export type Database = {
           body?: string;
           channels?: Database["public"]["Enums"]["notification_channel"][];
           created_at?: string;
+          emails_failed?: number;
+          emails_sent?: number;
           id?: string;
           recipient_count?: number;
           sent_at?: string | null;
@@ -523,29 +538,35 @@ export type Database = {
       };
       conversations: {
         Row: {
+          client_emailed_at: string | null;
           client_id: string;
           client_last_read_at: string | null;
           created_at: string;
           id: string;
           last_message_at: string | null;
+          trainer_emailed_at: string | null;
           trainer_id: string;
           trainer_last_read_at: string | null;
         };
         Insert: {
+          client_emailed_at?: string | null;
           client_id: string;
           client_last_read_at?: string | null;
           created_at?: string;
           id?: string;
           last_message_at?: string | null;
+          trainer_emailed_at?: string | null;
           trainer_id: string;
           trainer_last_read_at?: string | null;
         };
         Update: {
+          client_emailed_at?: string | null;
           client_id?: string;
           client_last_read_at?: string | null;
           created_at?: string;
           id?: string;
           last_message_at?: string | null;
+          trainer_emailed_at?: string | null;
           trainer_id?: string;
           trainer_last_read_at?: string | null;
         };
@@ -731,6 +752,7 @@ export type Database = {
           current_value: number | null;
           id: string;
           metric: string | null;
+          start_value: number | null;
           target_date: string | null;
           target_value: number | null;
           title: string;
@@ -744,6 +766,7 @@ export type Database = {
           current_value?: number | null;
           id?: string;
           metric?: string | null;
+          start_value?: number | null;
           target_date?: string | null;
           target_value?: number | null;
           title: string;
@@ -757,6 +780,7 @@ export type Database = {
           current_value?: number | null;
           id?: string;
           metric?: string | null;
+          start_value?: number | null;
           target_date?: string | null;
           target_value?: number | null;
           title?: string;
@@ -977,6 +1001,8 @@ export type Database = {
           landing_page: string | null;
           last_contacted_at: string | null;
           last_name: string | null;
+          last_seen_at: string | null;
+          last_touch: Json;
           lead_magnet_id: string | null;
           lost_reason: string | null;
           marketing_consent: boolean;
@@ -1027,6 +1053,8 @@ export type Database = {
           landing_page?: string | null;
           last_contacted_at?: string | null;
           last_name?: string | null;
+          last_seen_at?: string | null;
+          last_touch?: Json;
           lead_magnet_id?: string | null;
           lost_reason?: string | null;
           marketing_consent?: boolean;
@@ -1077,6 +1105,8 @@ export type Database = {
           landing_page?: string | null;
           last_contacted_at?: string | null;
           last_name?: string | null;
+          last_seen_at?: string | null;
+          last_touch?: Json;
           lead_magnet_id?: string | null;
           lost_reason?: string | null;
           marketing_consent?: boolean;
@@ -1261,6 +1291,7 @@ export type Database = {
           credits_expire_days: number | null;
           currency: string;
           description: string | null;
+          digital_file_name: string | null;
           digital_file_path: string | null;
           featured: boolean;
           features: string[];
@@ -1275,6 +1306,8 @@ export type Database = {
           sort_order: number;
           stripe_price_id: string | null;
           stripe_product_id: string | null;
+          stripe_sync_error: string | null;
+          stripe_synced_at: string | null;
           trainer_id: string;
           trial_days: number;
           updated_at: string;
@@ -1287,6 +1320,7 @@ export type Database = {
           credits_expire_days?: number | null;
           currency?: string;
           description?: string | null;
+          digital_file_name?: string | null;
           digital_file_path?: string | null;
           featured?: boolean;
           features?: string[];
@@ -1301,6 +1335,8 @@ export type Database = {
           sort_order?: number;
           stripe_price_id?: string | null;
           stripe_product_id?: string | null;
+          stripe_sync_error?: string | null;
+          stripe_synced_at?: string | null;
           trainer_id: string;
           trial_days?: number;
           updated_at?: string;
@@ -1313,6 +1349,7 @@ export type Database = {
           credits_expire_days?: number | null;
           currency?: string;
           description?: string | null;
+          digital_file_name?: string | null;
           digital_file_path?: string | null;
           featured?: boolean;
           features?: string[];
@@ -1327,6 +1364,8 @@ export type Database = {
           sort_order?: number;
           stripe_price_id?: string | null;
           stripe_product_id?: string | null;
+          stripe_sync_error?: string | null;
+          stripe_synced_at?: string | null;
           trainer_id?: string;
           trial_days?: number;
           updated_at?: string;
@@ -1883,6 +1922,79 @@ export type Database = {
             referencedRelation: "workout_logs";
             referencedColumns: ["id"];
           },
+        ];
+      };
+      sms_messages: {
+        Row: {
+          body: string;
+          booking_id: string | null;
+          created_at: string;
+          error: string | null;
+          id: string;
+          kind: string;
+          profile_id: string | null;
+          status: string;
+          to_phone: string;
+          twilio_sid: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          body: string;
+          booking_id?: string | null;
+          created_at?: string;
+          error?: string | null;
+          id?: string;
+          kind: string;
+          profile_id?: string | null;
+          status?: string;
+          to_phone: string;
+          twilio_sid?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          body?: string;
+          booking_id?: string | null;
+          created_at?: string;
+          error?: string | null;
+          id?: string;
+          kind?: string;
+          profile_id?: string | null;
+          status?: string;
+          to_phone?: string;
+          twilio_sid?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sms_messages_booking_id_fkey";
+            columns: ["booking_id"];
+            isOneToOne: false;
+            referencedRelation: "bookings";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "sms_messages_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      sms_opt_outs: {
+        Row: {
+          opted_out_at: string;
+          phone: string;
+        };
+        Insert: {
+          opted_out_at?: string;
+          phone: string;
+        };
+        Update: {
+          opted_out_at?: string;
+          phone?: string;
+        };
+        Relationships: [
         ];
       };
       stripe_events: {
@@ -2472,13 +2584,37 @@ export type Database = {
         Args: { p_client: string | null; p_trainer: string | null; p_session_type: string | null; p_amount: number | null; p_booking: string | null };
         Returns: undefined;
       };
+      conversation_inbox: {
+        Args: never;
+        Returns: unknown[];
+      };
+      copy_program_week: {
+        Args: { p_program: string | null; p_from_week: number | null; p_to_weeks: number[] | null; p_replace?: boolean | null };
+        Returns: number;
+      };
       credit_balance: {
         Args: { p_client: string | null; p_trainer: string | null; p_session_type?: string | null };
         Returns: number;
       };
+      credit_grants_remaining: {
+        Args: { p_client: string | null; p_trainer?: string | null };
+        Returns: unknown[];
+      };
       current_role_is: {
         Args: { r: Database["public"]["Enums"]["user_role"] | null };
         Returns: boolean;
+      };
+      debit_credits: {
+        Args: { p_client: string | null; p_trainer: string | null; p_amount: number | null; p_reason: string | null; p_note?: string | null; p_created_by?: string | null; p_payment?: string | null };
+        Returns: number;
+      };
+      duplicate_program: {
+        Args: { p_program: string | null; p_name: string | null };
+        Returns: string;
+      };
+      duplicate_program_workout: {
+        Args: { p_workout: string | null; p_week: number | null; p_day: number | null };
+        Returns: string;
       };
       ensure_conversation: {
         Args: { p_trainer: string | null; p_client: string | null };
@@ -2504,19 +2640,47 @@ export type Database = {
         Args: { p_client: string | null };
         Returns: boolean;
       };
+      lead_magnet_stats: {
+        Args: { p_trainer: string | null };
+        Returns: Json;
+      };
+      log_workout: {
+        Args: { p_log: Json | null; p_sets: Json | null };
+        Returns: string;
+      };
+      mark_conversation_read: {
+        Args: { p_conversation: string | null };
+        Returns: string;
+      };
+      outstanding_credits: {
+        Args: { p_trainer: string | null };
+        Returns: number;
+      };
       refund_booking_credits: {
         Args: { p_booking: string | null };
         Returns: number;
+      };
+      reschedule_booking: {
+        Args: { p_booking: string | null; p_starts_at: string | null; p_actor?: string | null };
+        Returns: Database["public"]["Tables"]["bookings"]["Row"];
       };
       reserve_booking: {
         Args: { p_session_type_id: string | null; p_starts_at: string | null; p_client_id: string | null; p_guest_name: string | null; p_guest_email: string | null; p_guest_phone: string | null; p_status: Database["public"]["Enums"]["booking_status"] | null; p_payment_method: Database["public"]["Enums"]["payment_method_kind"] | null; p_hold_minutes: number | null; p_client_notes: string | null; p_lead_id?: string | null; p_rescheduled_from?: string | null };
         Returns: Database["public"]["Tables"]["bookings"]["Row"];
       };
+      trainer_client_credit_balances: {
+        Args: { p_trainer: string | null };
+        Returns: unknown[];
+      };
+      unsubscribe_lead: {
+        Args: { p_token: string | null };
+        Returns: Database["public"]["Tables"]["leads"]["Row"];
+      };
     };
     Enums: {
       billing_interval: "week" | "month" | "year";
       booking_status: "pending_payment" | "confirmed" | "cancelled" | "completed" | "no_show" | "late_cancelled";
-      lead_event_type: "captured" | "magnet_delivered" | "magnet_downloaded" | "email_sent" | "note" | "status_changed" | "consult_booked" | "converted" | "page_view";
+      lead_event_type: "captured" | "magnet_delivered" | "magnet_downloaded" | "email_sent" | "note" | "status_changed" | "consult_booked" | "converted" | "page_view" | "invited" | "unsubscribed" | "contact_message";
       lead_status: "new" | "contacted" | "consult_booked" | "nurturing" | "converted" | "lost" | "unsubscribed";
       location_type: "in_person" | "virtual" | "phone" | "client_location";
       message_kind: "text" | "video" | "image" | "file" | "system" | "workout_share";
