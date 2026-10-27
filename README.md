@@ -110,7 +110,10 @@ src/lib/supabase/database.types.ts` (or `DATABASE_URL=... npm run db:types`, whi
   `DAILY_API_KEY`.
 
 ### 4. Deploy (Vercel)
-Import the repo, add the env vars from `.env.example`, deploy. `vercel.json` schedules
+Import the repo, add the env vars from `.env.example`, deploy. Required: `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `NEXT_PUBLIC_SITE_URL`, `OWNER_EMAIL`.
+On startup the server logs a `[config]` report naming anything missing (check the runtime logs if a
+page shows "We hit a snag"). `vercel.json` schedules
 `/api/cron/reminders` every 15 minutes (reminders, waitlist notices, expiring unpaid holds,
 auto-completing past sessions); set `CRON_SECRET` and Vercel sends it automatically.
 

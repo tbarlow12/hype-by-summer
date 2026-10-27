@@ -3,7 +3,8 @@ import { absoluteUrl } from "@/lib/env";
 import { getActiveMagnets, getPublicSessionTypes } from "@/lib/marketing";
 import { getPrimaryTrainer } from "@/lib/trainer";
 
-export const revalidate = 3600;
+// Built per request (not at build time), so it never needs database access during `next build`.
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();

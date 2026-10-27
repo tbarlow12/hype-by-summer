@@ -1,14 +1,16 @@
 import "server-only";
 
-function required(name: string): string {
+function required(name: string, hint?: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`Missing environment variable ${name}`);
+  if (!value) throw new Error(`Missing environment variable ${name}${hint ? ` (${hint})` : ""}`);
   return value;
 }
 
 export const serverEnv = {
   supabaseSecretKey: () =>
-    process.env.SUPABASE_SECRET_KEY ?? required("SUPABASE_SERVICE_ROLE_KEY"),
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    required("SUPABASE_SECRET_KEY", "Supabase → Project Settings → API Keys → secret key"),
   stripeSecretKey: () => required("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: () => required("STRIPE_WEBHOOK_SECRET"),
   stripeAutomaticTax: () => process.env.STRIPE_AUTOMATIC_TAX === "true",
