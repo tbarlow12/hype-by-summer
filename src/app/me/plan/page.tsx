@@ -4,7 +4,7 @@ import { ProgressBar } from "@/components/charts";
 import { WorkoutLogItem } from "@/components/training/feedback";
 import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { adherenceByWeek, overallAdherence } from "@/lib/training/adherence";
+import { adherenceByWeek, adherenceToDate } from "@/lib/training/adherence";
 import { longDateLabel, programPosition, programWorkoutDate, shortDayLabel, todayInTz } from "@/lib/training/dates";
 import { getActiveProgram, loadLogs, loadWorkouts } from "@/lib/training/server";
 
@@ -66,7 +66,9 @@ export default async function PlanPage({ searchParams }: PageProps<"/me/plan">) 
   const currentWeek = position?.week ?? (started ? program.duration_weeks : null);
   const doneIds = new Set(programLogs.map((l) => l.workout_id));
   const weeks = adherenceByWeek(workouts, programLogs.map((l) => l.workout_id), program.duration_weeks);
-  const overall = currentWeek ? overallAdherence(weeks, currentWeek) : null;
+  const overall = currentWeek
+    ? adherenceToDate(workouts, programLogs.map((l) => l.workout_id), position ?? { week: currentWeek, day: 7 })
+    : null;
   const todays = position ? workouts.filter((w) => w.week === position.week && w.day === position.day) : [];
   const nextUp = workouts.find((w) => !doneIds.has(w.id) && programWorkoutDate(start, w.week, w.day) >= today);
 

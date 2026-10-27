@@ -6,7 +6,7 @@ import { Badge, Card, CardTitle, LinkButton } from "@/components/ui";
 import { Sparkline } from "@/components/charts";
 import { requireTrainer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { adherenceByWeek, feedbackFlags, overallAdherence } from "@/lib/training/adherence";
+import { adherenceByWeek, feedbackFlags, adherenceToDate } from "@/lib/training/adherence";
 import { respondToCheckIn, respondToProgramFeedback, respondToWorkoutLog } from "@/lib/training/coach-actions";
 import { longDateLabel, programPosition, todayInTz } from "@/lib/training/dates";
 import { recentPRs } from "@/lib/training/records";
@@ -61,7 +61,9 @@ export async function ClientTrainingSummary({ clientId }: { clientId: string }) 
   const position = program?.start_date ? programPosition(program.start_date, program.duration_weeks, today) : null;
   const currentWeek = position?.week ?? (program?.start_date && program.start_date <= today ? program.duration_weeks : null);
   const weeks = program ? adherenceByWeek(workouts, programLogs.map((l) => l.workout_id), program.duration_weeks) : [];
-  const overall = currentWeek ? overallAdherence(weeks, currentWeek) : null;
+  const overall = currentWeek
+    ? adherenceToDate(workouts, programLogs.map((l) => l.workout_id), position ?? { week: currentWeek, day: 7 })
+    : null;
   const flags = feedbackFlags(recent);
   const weights = [...(metricsRes.data ?? [])].reverse();
   const weightUnit = weights[weights.length - 1]?.unit_system === "metric" ? "kg" : "lb";

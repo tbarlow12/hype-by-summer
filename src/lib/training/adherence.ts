@@ -74,3 +74,24 @@ export const DIFFICULTY_LABELS: Record<number, string> = {
   4: "A bit hard",
   5: "Too hard",
 };
+
+/**
+ * Overall adherence up to and including (week, day): workouts due by then,
+ * plus any done early. Null when nothing is due yet.
+ */
+export function adherenceToDate(
+  workouts: { id: string; week: number; day: number }[],
+  loggedWorkoutIds: (string | null)[],
+  through: { week: number; day: number },
+): number | null {
+  const logged = new Set(loggedWorkoutIds.filter((id): id is string => !!id));
+  let due = 0;
+  let done = 0;
+  for (const w of workouts) {
+    const isDue = w.week < through.week || (w.week === through.week && w.day <= through.day);
+    if (!isDue && !logged.has(w.id)) continue;
+    due += 1;
+    if (logged.has(w.id)) done += 1;
+  }
+  return due ? Math.round((done / due) * 100) : null;
+}

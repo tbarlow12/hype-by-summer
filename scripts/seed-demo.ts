@@ -77,7 +77,7 @@ async function main() {
         { trainer_id: coachId, slug: "personal-training", name: "1:1 Personal training", description: "A fully coached session built around your program.", duration_minutes: 60, price_cents: 9000, location_type: "in_person", location_details: "Summit Strength Gym, 123 Main St, Denver", buffer_after_minutes: 15, sort_order: 1 },
         { trainer_id: coachId, slug: "virtual-session", name: "Virtual training session", description: "Live coaching over video. All you need is a little space.", duration_minutes: 45, price_cents: 6500, location_type: "virtual", sort_order: 2, color: "#8b5cf6" },
         { trainer_id: coachId, slug: "saturday-bootcamp", name: "Saturday bootcamp", description: "High-energy small group class. Max 8.", duration_minutes: 50, price_cents: 2500, capacity: 8, location_type: "in_person", location_details: "Wash Park, south boathouse", sort_order: 3, color: "#f59e0b" },
-      ]).select(),
+      ], { defaultToNull: false }).select(),
     );
     const rules: Database["public"]["Tables"]["availability_rules"]["Insert"][] = [];
     for (const weekday of [1, 2, 3, 4, 5]) {
@@ -97,7 +97,7 @@ async function main() {
         { trainer_id: coachId, kind: "subscription", name: "Online coaching", description: "Custom program, weekly check-ins, form reviews and unlimited messaging.", price_cents: 14900, billing_interval: "month", includes_programming: true, features: ["Personalized program in the app", "Weekly check-in review", "Unlimited form checks", "Chat with your coach"], sort_order: 3 },
         { trainer_id: coachId, kind: "subscription", name: "Hybrid membership", description: "Four 1:1 sessions a month plus full online coaching.", price_cents: 39900, billing_interval: "month", credits: 4, credits_expire_days: 45, includes_programming: true, features: ["4 sessions / month", "Everything in Online coaching"], featured: true, sort_order: 4 },
         { trainer_id: coachId, kind: "one_time", name: "Movement assessment", description: "A 75-minute assessment and written plan.", price_cents: 12500, sort_order: 5 },
-      ]).select(),
+      ], { defaultToNull: false }).select(),
     );
   }
 

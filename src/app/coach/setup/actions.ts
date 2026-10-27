@@ -31,7 +31,7 @@ export async function setupStorefront(_: ActionState, formData: FormData): Promi
     { trainer_id: profile.id, slug: "free-consult", name: "Free consultation", description: "A 20-minute call to talk goals and see if we're a fit.", duration_minutes: 20, price_cents: 0, location_type: "virtual", requires_payment: false, is_consultation: true, allow_credits: false, credits_required: 0, sort_order: 0 },
     { trainer_id: profile.id, slug: "personal-training", name: "1:1 Personal training", description: "A full coached session tailored to you.", duration_minutes: 60, price_cents: 9000, location_type: "in_person", buffer_after_minutes: 15, sort_order: 1 },
     { trainer_id: profile.id, slug: "virtual-session", name: "Virtual training session", description: "Live coaching over video, anywhere.", duration_minutes: 45, price_cents: 6500, location_type: "virtual", sort_order: 2 },
-  ]);
+  ], { defaultToNull: false });
   const weekdays = [1, 2, 3, 4, 5];
   await admin.from("availability_rules").insert(
     weekdays.flatMap((weekday) => [

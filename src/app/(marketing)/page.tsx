@@ -161,7 +161,7 @@ export default async function HomePage() {
               <LinkButton href={consult} size="lg" className="shadow-lg shadow-brand/30">
                 Book a free consult
               </LinkButton>
-              <Link href={guideHref} className={buttonClass("outline", "lg", "border-white/30 bg-white/5 text-white hover:bg-white/10 dark:border-white/30 dark:bg-white/5 dark:text-white dark:hover:bg-white/10")}>
+              <Link href={guideHref} className={buttonClass("inverse", "lg")}>
                 Get the free guide
               </Link>
             </div>

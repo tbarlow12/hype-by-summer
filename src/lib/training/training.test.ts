@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adherenceByWeek, feedbackFlags, overallAdherence } from "./adherence";
+import { adherenceByWeek, adherenceToDate, feedbackFlags, overallAdherence } from "./adherence";
 import { addDays, programPosition, programWorkoutDate, todayInTz, weekStartMonday } from "./dates";
 import { bestStreak, countInWeek, currentStreak, goalProgress } from "./habits";
 import { buildPrefill, parseDurationTarget, parseLoad, parseRepTarget } from "./prefill";
@@ -173,5 +173,25 @@ describe("parseVideoUrl", () => {
     expect(parseVideoUrl("https://example.com/page")).toBeNull();
     expect(parseVideoUrl("not a url")).toBeNull();
     expect(parseVideoUrl("")).toBeNull();
+  });
+});
+
+describe("adherenceToDate", () => {
+  const ws = [
+    { id: "a", week: 1, day: 1 },
+    { id: "b", week: 1, day: 3 },
+    { id: "c", week: 1, day: 5 },
+    { id: "d", week: 2, day: 1 },
+  ];
+  it("only counts workouts due so far", () => {
+    expect(adherenceToDate(ws, ["a"], { week: 1, day: 1 })).toBe(100);
+    expect(adherenceToDate(ws, [], { week: 1, day: 3 })).toBe(0);
+    expect(adherenceToDate(ws, ["a"], { week: 1, day: 4 })).toBe(50);
+  });
+  it("counts workouts done early", () => {
+    expect(adherenceToDate(ws, ["a", "b"], { week: 1, day: 1 })).toBe(100);
+  });
+  it("is null before anything is due", () => {
+    expect(adherenceToDate([{ id: "x", week: 1, day: 2 }], [], { week: 1, day: 1 })).toBeNull();
   });
 });

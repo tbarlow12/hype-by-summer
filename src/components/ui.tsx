@@ -5,7 +5,7 @@ import { initials } from "@/lib/format";
 
 export const cn = clsx;
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline" | "inverse";
 type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
@@ -14,6 +14,8 @@ const variants: Record<Variant, string> = {
   outline: "border border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800",
   ghost: "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
   danger: "bg-red-600 text-white hover:bg-red-700",
+  /** Outline button for dark backgrounds (hero sections). */
+  inverse: "border border-white/30 bg-white/5 text-white hover:bg-white/10",
 };
 const sizes: Record<Size, string> = {
   sm: "h-8 px-3 text-sm",

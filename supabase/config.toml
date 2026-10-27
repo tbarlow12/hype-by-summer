@@ -5,7 +5,7 @@ project_id = "hype-by-summer"
 schemas = ["public"]
 
 [db]
-major_version = 16
+major_version = 17
 
 [db.seed]
 enabled = true

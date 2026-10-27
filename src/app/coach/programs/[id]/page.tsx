@@ -7,7 +7,7 @@ import { AdherenceBars, FlagBadges, ProgramFeedbackItem, WorkoutLogItem } from "
 import { requireTrainer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { displayName } from "@/lib/format";
-import { adherenceByWeek, feedbackFlags, overallAdherence } from "@/lib/training/adherence";
+import { adherenceByWeek, feedbackFlags, adherenceToDate } from "@/lib/training/adherence";
 import { respondToProgramFeedback, respondToWorkoutLog } from "@/lib/training/coach-actions";
 import { longDateLabel, programPosition, todayInTz } from "@/lib/training/dates";
 import { EXERCISE_FIELDS, loadLogs, loadProgramTree } from "@/lib/training/server";
@@ -58,7 +58,9 @@ export default async function ProgramPage({ params, searchParams }: PageProps<"/
   const position = program.start_date ? programPosition(program.start_date, program.duration_weeks, today) : null;
   const currentWeek = position?.week ?? (program.start_date && program.start_date < today ? program.duration_weeks : null);
   const weeks = adherenceByWeek(workouts, logs.map((l) => l.workout_id), program.duration_weeks);
-  const overall = currentWeek ? overallAdherence(weeks, currentWeek) : null;
+  const overall = currentWeek
+    ? adherenceToDate(workouts, logs.map((l) => l.workout_id), position ?? { week: currentWeek, day: 7 })
+    : null;
   const flags = feedbackFlags(logs);
 
   const statusButtons = isTemplate
