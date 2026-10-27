@@ -8,14 +8,12 @@ export type NavItem = { href: string; label: string; count?: number; section?: s
 
 export function NavLinks({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
-  let lastSection: string | undefined;
   return (
     <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-col lg:overflow-visible">
-      {items.map((item) => {
+      {items.map((item, i) => {
         const root = item.href.split("/").length <= 2;
         const active = root ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
-        const header = item.section && item.section !== lastSection ? item.section : null;
-        lastSection = item.section;
+        const header = item.section && item.section !== items[i - 1]?.section ? item.section : null;
         return (
           <div key={item.href} className="contents">
             {header ? (

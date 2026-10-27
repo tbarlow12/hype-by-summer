@@ -8,6 +8,10 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+// Every page reads live data (availability, prices, the signed-in user), so
+// render per request rather than prerendering at build time.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: { default: BRAND_NAME, template: `%s · ${BRAND_NAME}` },
