@@ -202,9 +202,12 @@ export async function createOfferingCheckout(offeringId: string, clientId: strin
 
   // A fresh key per 10-minute window: retries/double-clicks reuse the session.
   const window = Math.floor(Date.now() / 600_000);
-  const session = await stripe().checkout.sessions.create(params, {
-    idempotencyKey: `offering-checkout:${offering.id}:${clientId}:${offering.stripe_price_id}:${window}`,
-  });
+  const key = `offering-checkout:${offering.id}:${clientId}:${offering.stripe_price_id}:${window}`;
+  let session = await stripe().checkout.sessions.create(params, { idempotencyKey: key });
+  // The cached session may already be paid (buying the same pack twice): start a new one.
+  if (session.status !== "open") {
+    session = await stripe().checkout.sessions.create(params, { idempotencyKey: `${key}:${Date.now()}` });
+  }
   if (!session.url) throw new Error("Stripe did not return a checkout URL");
 
   if (offering.kind !== "subscription") {

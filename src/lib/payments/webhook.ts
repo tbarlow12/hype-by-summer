@@ -215,12 +215,14 @@ async function handleBookingCheckout(admin: Admin, session: Stripe.Checkout.Sess
   if (!bookingId) return;
   const { data: booking } = await admin
     .from("bookings")
-    .select("id, status, cancel_reason, client_id, trainer_id, guest_email, hold_expires_at")
+    .select("id, status, cancel_reason, client_id, trainer_id, guest_email, hold_expires_at, stripe_checkout_session_id")
     .eq("id", bookingId)
     .maybeSingle();
   if (!booking) return;
 
   if (outcome === "expired" || outcome === "async_failed") {
+    // A superseded session (the client restarted checkout) must not cancel the booking.
+    if (booking.stripe_checkout_session_id && booking.stripe_checkout_session_id !== session.id) return;
     const { data: cancelled } = await admin
       .from("bookings")
       .update({
