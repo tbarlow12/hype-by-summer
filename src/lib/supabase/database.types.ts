@@ -2592,7 +2592,7 @@ export type Database = {
       };
       conversation_inbox: {
         Args: never;
-        Returns: unknown[];
+        Returns: { conversation_id: string | null; trainer_id: string | null; client_id: string | null; other_id: string | null; other_name: string | null; other_email: string | null; other_avatar_url: string | null; last_message_at: string | null; last_body: string | null; last_kind: Database["public"]["Enums"]["message_kind"] | null; last_sender_id: string | null; last_deleted: boolean | null; unread_count: number | null }[];
       };
       copy_program_week: {
         Args: { p_program: string | null; p_from_week: number | null; p_to_weeks: number[] | null; p_replace?: boolean | null };
@@ -2604,7 +2604,7 @@ export type Database = {
       };
       credit_grants_remaining: {
         Args: { p_client: string | null; p_trainer?: string | null };
-        Returns: unknown[];
+        Returns: { grant_id: string | null; trainer_id: string | null; granted: number | null; remaining: number | null; reason: string | null; offering_id: string | null; session_type_ids: string[] | null; expires_at: string | null; created_at: string | null }[];
       };
       current_role_is: {
         Args: { r: Database["public"]["Enums"]["user_role"] | null };
@@ -2676,7 +2676,7 @@ export type Database = {
       };
       trainer_client_credit_balances: {
         Args: { p_trainer: string | null };
-        Returns: unknown[];
+        Returns: { client_id: string | null; balance: number | null; granted: number | null }[];
       };
       unsubscribe_lead: {
         Args: { p_token: string | null };

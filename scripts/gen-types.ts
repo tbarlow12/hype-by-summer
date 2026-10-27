@@ -78,11 +78,16 @@ async function main() {
   const functions = (
     await db.query<{
       name: string; arg_names: string[] | null; arg_udts: string[]; n_defaults: number;
+      arg_modes: string[] | null; all_udts: string[] | null;
       ret: string; ret_set: boolean; ret_is_table: boolean;
     }>(`
       select p.proname as name, p.proargnames::text[] as arg_names,
                           array(select t.typname::text from unnest(p.proargtypes) with ordinality as a(oid, ord) join pg_type t on t.oid = a.oid order by a.ord) as arg_udts,
              p.pronargdefaults as n_defaults,
+             p.proargmodes::text[] as arg_modes,
+             case when p.proallargtypes is null then null else
+               array(select t.typname::text from unnest(p.proallargtypes) with ordinality as a(oid, ord) join pg_type t on t.oid = a.oid order by a.ord)
+             end as all_udts,
              rt.typname as ret, p.proretset as ret_set, rt.typtype = 'c' as ret_is_table
         from pg_proc p
         join pg_namespace n on n.oid = p.pronamespace
@@ -139,13 +144,21 @@ async function main() {
   out.push(`${ind(2)}Views: { [_ in never]: never };`);
   out.push(`${ind(2)}Functions: {`);
   for (const f of functions) {
-    const names = f.arg_names ?? [];
+    // With OUT/TABLE params, proargnames covers every arg; split inputs from outputs.
+    const modes = f.arg_modes ?? f.arg_udts.map(() => "i");
+    const allNames = f.arg_names ?? [];
+    const names = allNames.filter((_, i) => ["i", "b", "v"].includes(modes[i]!));
+    const outCols = (f.all_udts ?? [])
+      .map((udt, i) => ({ udt, name: allNames[i], mode: modes[i] }))
+      .filter((c) => c.mode === "o" || c.mode === "t" || c.mode === "b");
     const firstOptional = f.arg_udts.length - f.n_defaults;
     // SQL args may be null; allow it so callers needn't cast.
     const args = f.arg_udts.map((udt, i) => `${names[i]}${i >= firstOptional ? "?" : ""}: ${tsType(udt)} | null`);
     let ret = f.ret_is_table
       ? `Database["public"]["Tables"]["${f.ret}"]["Row"]`
-      : tsType(f.ret);
+      : f.ret === "record" && outCols.length
+        ? `{ ${outCols.map((c) => `${c.name}: ${tsType(c.udt)} | null`).join("; ")} }`
+        : tsType(f.ret);
     if (f.ret_set) ret = `${ret}[]`;
     out.push(`${ind(3)}${f.name}: {`);
     out.push(`${ind(4)}Args: ${args.length ? `{ ${args.join("; ")} }` : "never"};`);
