@@ -5,6 +5,7 @@ import { ActionForm, SubmitButton } from "@/components/form";
 import { Alert, Badge, Card, CardTitle, Checkbox, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { ImageUpload } from "@/components/clients/image-upload";
 import { TestimonialForm } from "@/components/testimonial-form";
+import { PasswordCard } from "@/components/account/password-card";
 import { formatDateTime } from "@/lib/format";
 import { BRAND_NAME } from "@/lib/env";
 import { EXPERIENCE_LEVELS, PARQ_QUESTIONS, PRIMARY_GOALS, parqFlags, readParqAnswers } from "@/lib/clients/intake";
@@ -223,6 +224,8 @@ export default async function ProfilePage() {
           </ActionForm>
         ) : null}
       </Card>
+
+      <PasswordCard />
 
       {trainerId ? (
         <Card>

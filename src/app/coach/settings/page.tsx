@@ -1,3 +1,4 @@
+import { PasswordCard } from "@/components/account/password-card";
 import type { Metadata } from "next";
 import { requireTrainer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -223,6 +224,7 @@ export default async function SettingsPage() {
           </LinkButton>
         </div>
       </Card>
+      <PasswordCard />
     </div>
   );
 }
