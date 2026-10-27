@@ -1,0 +1,26 @@
+# Supabase CLI config (local dev: `npx supabase start`, push: `npx supabase db push`).
+project_id = "hype-by-summer"
+
+[api]
+schemas = ["public"]
+
+[db]
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback", "http://localhost:3000/auth/confirm"]
+enable_signup = true
+
+[auth.email]
+enable_confirmations = true
+
+[storage]
+file_size_limit = "500MiB"
+
+[realtime]
+enabled = true

@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* Dark mode follows the OS setting (Tailwind's default `dark:` = prefers-color-scheme). */
+
+:root {
+  color-scheme: light dark;
+  --background: #fafafa;
+  --foreground: #18181b;
+  --brand: #e11d48;
+  --brand-dark: #be123c;
+  /* Light mode: zinc-400 is used for small secondary text but is too faint on
+     white; render it as zinc-500. Dark mode restores both below. */
+  --color-zinc-400: oklch(55.2% 0.016 285.938);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #09090b;
+    --foreground: #f4f4f5;
+    /* Secondary text (zinc-500) is too faint on dark cards; lift it to zinc-400. */
+    --color-zinc-400: oklch(70.5% 0.015 286.067);
+    --color-zinc-500: oklch(70.5% 0.015 286.067);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --font-sans: var(--font-barlow);
+  --font-display: var(--font-barlow-condensed);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Peloton-style display type: heavy, condensed, uppercase headings. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+}
+h1,
+h2 {
+  text-transform: uppercase;
+}
+
+/* Brand red stays #e11d48 for buttons (white text passes contrast). Red *text*
+   is a shade deeper on light backgrounds and lighter on near-black so it stays
+   legible on tinted chips. Unlayered, so it beats the utility. */
+.text-brand,
+.hover\:text-brand:hover {
+  color: #be123c;
+}
+@media (prefers-color-scheme: dark) {
+  .text-brand,
+  .hover\:text-brand:hover {
+    color: #fb7185;
+  }
+}
+
+/* Heavy weights (stats, logo, big numbers) use the condensed display face too. */
+.font-black,
+.font-extrabold {
+  font-family: var(--font-display);
+}
