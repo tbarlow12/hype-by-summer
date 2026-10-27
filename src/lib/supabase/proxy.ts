@@ -2,12 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/env";
 
-const PROTECTED_PREFIXES = ["/coach", "/me"];
+const PROTECTED_PREFIXES = ["/coach", "/me", "/onboarding"];
 
 /** Refreshes the auth session cookie and bounces signed-out users from private areas. */
 export async function updateSession(request: NextRequest) {
-  // Expose the pathname to server layouts (headers() has no URL otherwise).
-  request.headers.set("x-pathname", request.nextUrl.pathname);
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {

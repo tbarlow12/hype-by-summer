@@ -42,7 +42,7 @@ function must<T>(res: { data: T; error: unknown }): NonNullable<T> {
 
 async function main() {
   const coachId = await ensureUser("coach@demo.hypebysummer.com", "Summer Coach");
-  // The very first account becomes the trainer automatically; make sure even if not first.
+  // Signups are clients; the app promotes OWNER_EMAIL. Make the demo coach a trainer directly.
   await db.from("profiles").update({ role: "trainer", timezone: "America/Denver" }).eq("id", coachId);
   const clientId = await ensureUser("client@demo.hypebysummer.com", "Jordan Client");
 

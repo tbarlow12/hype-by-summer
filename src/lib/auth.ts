@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/supabase/database.types";
 
 export type Profile = Tables<"profiles">;
@@ -13,8 +14,32 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
   const userId = claims?.claims?.sub;
   if (!userId) return null;
   const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+  if (data && data.role === "client" && isOwnerEmail(data.email)) return promoteToTrainer(data);
   return data;
 });
+
+/** OWNER_EMAIL (comma-separated for multiple coaches) gets the trainer role. */
+export function isOwnerEmail(email: string | null | undefined): boolean {
+  const owners = (process.env.OWNER_EMAIL ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return Boolean(email) && owners.includes(email!.toLowerCase());
+}
+
+async function promoteToTrainer(profile: Profile): Promise<Profile> {
+  const { data, error } = await createAdminClient()
+    .from("profiles")
+    .update({ role: "trainer" })
+    .eq("id", profile.id)
+    .select("*")
+    .single();
+  if (error || !data) {
+    console.error("[auth] owner promotion failed", error);
+    return profile;
+  }
+  return data;
+}
 
 export async function requireUser(next?: string): Promise<Profile> {
   const profile = await getProfile();

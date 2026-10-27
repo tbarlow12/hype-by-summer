@@ -6,11 +6,12 @@ import { ContactForm } from "@/components/marketing/contact-form";
 import { CheckIcon, GuideCover, LOCATION_LABELS, Section, Stars } from "@/components/marketing/sections";
 import { BRAND_NAME, SITE_URL } from "@/lib/env";
 import { formatDuration, formatMoney } from "@/lib/format";
-import { coachName, consultHref, getApprovedTestimonials, getSiteContext } from "@/lib/marketing";
+import { coachName, consultHref, getApprovedTestimonials, getSiteContext, placeholderTrainer } from "@/lib/marketing";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { trainer, magnets } = await getSiteContext();
-  if (!trainer) return { title: { absolute: `${BRAND_NAME} · Coming soon` } };
+  const site = await getSiteContext();
+  const { magnets } = site;
+  const trainer = site.trainer ?? placeholderTrainer();
   const description =
     trainer.bio?.slice(0, 160) ??
     `Personal training and online coaching with ${coachName(trainer).full}. Book a free consult today.`;
@@ -28,33 +29,15 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-function ComingSoon() {
-  return (
-    <section className="relative flex min-h-[70vh] items-center overflow-hidden bg-zinc-950 px-4 py-24 text-white">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(225,29,72,0.45),transparent_55%)]" aria-hidden="true" />
-      <div className="relative mx-auto max-w-2xl text-center">
-        <p className="text-sm font-bold uppercase tracking-[0.25em] text-brand">Coming soon</p>
-        <h1 className="mt-4 text-5xl font-black tracking-tight text-balance sm:text-7xl">{BRAND_NAME}</h1>
-        <p className="mt-6 text-lg text-zinc-300">
-          We&apos;re putting the finishing touches on the new site. Coaching, booking and free guides are on the way.
-        </p>
-        <div className="mt-10 flex justify-center">
-          <LinkButton href="/login" size="lg">
-            Sign in
-          </LinkButton>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export default async function HomePage() {
-  const { trainer, magnets, types } = await getSiteContext();
-  if (!trainer) return <ComingSoon />;
+  const site = await getSiteContext();
+  const { magnets, types } = site;
+  // Before the coach finishes setup, render the full page with default copy.
+  const trainer = site.trainer ?? placeholderTrainer();
 
-  const testimonials = await getApprovedTestimonials(trainer.trainer_id);
+  const testimonials = site.trainer ? await getApprovedTestimonials(trainer.trainer_id) : [];
   const { full: name, first } = coachName(trainer);
-  const consult = consultHref(trainer, types);
+  const consult = site.trainer ? consultHref(trainer, types) : "/book";
   const consultType = types.find((t) => t.is_consultation);
   const services = types.filter((t) => !t.is_consultation);
   const magnet = magnets[0];
@@ -149,7 +132,7 @@ export default async function HomePage() {
             <h1 className="mt-6 text-5xl font-black leading-[0.95] tracking-tight text-balance sm:text-7xl">
               {trainer.headline ?? (
                 <>
-                  Stronger body. <span className="text-brand">Unshakable</span> confidence.
+                  Stronger body. <span className="text-rose-400">Unshakable</span> confidence.
                 </>
               )}
             </h1>

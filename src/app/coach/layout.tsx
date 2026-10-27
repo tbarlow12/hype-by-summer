@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-links";
 import { requireTrainer } from "@/lib/auth";
@@ -17,8 +16,9 @@ export default async function CoachLayout({ children }: LayoutProps<"/coach">) {
     supabase.from("conversations").select("last_message_at, trainer_last_read_at").eq("trainer_id", profile.id),
   ]);
 
-  const pathname = (await headers()).get("x-pathname") ?? "";
-  if (!storefront && !pathname.startsWith("/coach/setup")) redirect("/coach/setup");
+  // First run: the storefront is created on /onboarding, which lives outside
+  // this layout so the redirect can't loop.
+  if (!storefront) redirect("/onboarding");
 
   const unread = (convos ?? []).filter(
     (c) => c.last_message_at && (!c.trainer_last_read_at || c.last_message_at > c.trainer_last_read_at),

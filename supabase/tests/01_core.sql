@@ -15,9 +15,10 @@ declare
   pt uuid; grp uuid; b public.bookings; l public.leads; n int; ok boolean;
   g uuid;
 begin
-  -- First signup becomes the trainer, later ones are clients.
-  assert (select role from public.profiles where id = t) = 'trainer', 'first user should be trainer';
+  -- Every signup is a client (the app promotes OWNER_EMAIL to trainer).
+  assert (select role from public.profiles where id = t) = 'client', 'signups start as clients';
   assert (select role from public.profiles where id = cb) = 'client', 'second user should be client';
+  update public.profiles set role = 'trainer' where id = t;
 
   insert into public.trainer_profiles (trainer_id, slug, business_name) values (t, 'coach', 'Coach Co');
   insert into public.trainer_clients (trainer_id, client_id) values (t, cb);

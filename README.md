@@ -29,8 +29,9 @@ Sign in at http://localhost:3000/login:
 | Client | client@demo.hypebysummer.com | trainhard123 |
 
 Without Stripe/Resend/Twilio keys the app still runs: emails and texts are printed to the server
-console, and card payments show a friendly error. In production the **first account to sign up
-becomes the coach** (business owner); everyone after is a client.
+console, and card payments show a friendly error. The coach role goes to the account whose email
+matches **`OWNER_EMAIL`**; every other signup is a client. Until the coach finishes setup, the
+homepage shows default copy.
 
 ## Where things live
 
@@ -69,6 +70,7 @@ src/lib/supabase/database.types.ts` (or `DATABASE_URL=... npm run db:types`, whi
 ## Going live
 
 ### 1. Supabase
+0. Set `OWNER_EMAIL` to the coach's email, then have her sign up with it and complete the setup screen.
 1. Create a project and link it: `npx supabase link --project-ref <ref>` then `npx supabase db push`.
    Load the exercise library once: run `supabase/seed.sql` in the SQL editor.
 2. **Auth → URL configuration:** Site URL = your domain; add `https://<domain>/auth/callback` and

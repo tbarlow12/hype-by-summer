@@ -15,7 +15,7 @@ export default async function SetupPage() {
   if (data) redirect("/coach");
 
   return (
-    <div className="max-w-xl">
+    <div>
       <PageHeader title="Welcome! Let's set up your business" description="You can change all of this later in Settings." />
       <Card>
         <ActionForm action={setupStorefront} className="flex flex-col gap-4">

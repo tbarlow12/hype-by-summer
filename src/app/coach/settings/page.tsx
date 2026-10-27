@@ -24,7 +24,7 @@ export default async function SettingsPage() {
       <div>
         <PageHeader title="Settings" />
         <Alert tone="amber">Finish setting up your storefront first.</Alert>
-        <LinkButton href="/coach/setup" className="mt-4">
+        <LinkButton href="/onboarding" className="mt-4">
           Set up storefront
         </LinkButton>
       </div>
