@@ -112,7 +112,7 @@ async function seedSummer() {
         { business_id: biz, coach_ids: [summer, marcus], slug: "personal-training", name: "1:1 Personal training", description: "A fully coached session built around your program.", duration_minutes: 60, price_cents: 9000, location_type: "in_person", location_details: "Summit Strength Gym, 123 Main St, Denver", buffer_after_minutes: 15, sort_order: 1 },
         { business_id: biz, coach_ids: [summer], slug: "virtual-session", name: "Virtual training session", description: "Live coaching over video. All you need is a little space.", duration_minutes: 45, price_cents: 6500, location_type: "virtual", sort_order: 2, color: "#8b5cf6" },
         { business_id: biz, coach_ids: [marcus], slug: "saturday-bootcamp", name: "Saturday bootcamp", description: "High-energy small group class. Max 8.", duration_minutes: 50, price_cents: 2500, capacity: 8, location_type: "in_person", location_details: "Wash Park, south boathouse", sort_order: 3, color: "#f59e0b" },
-      ]).select("id"),
+      ], { defaultToNull: false }).select("id"),
     );
   }
   const { count: ruleCount } = await db.from("availability_rules").select("id", { count: "exact", head: true }).eq("business_id", biz);
@@ -124,7 +124,7 @@ async function seedSummer() {
           ...weekdayRules(biz, summer, [1, 2, 3, 4, 5], [["06:00", "11:00"], ["16:00", "19:00"]]),
           ...weekdayRules(biz, marcus, [1, 3, 5], [["12:00", "20:00"]]),
           ...weekdayRules(biz, marcus, [6], [["08:00", "12:00"]]),
-        ])
+        ], { defaultToNull: false })
         .select("id"),
     );
   }
@@ -138,7 +138,7 @@ async function seedSummer() {
         { business_id: biz, kind: "subscription", name: "Online coaching", description: "Custom program, weekly check-ins, form reviews and unlimited messaging.", price_cents: 14900, billing_interval: "month", includes_programming: true, features: ["Personalized program in the app", "Weekly check-in review", "Unlimited form checks", "Chat with your coach"], sort_order: 3 },
         { business_id: biz, kind: "subscription", name: "Hybrid membership", description: "Four 1:1 sessions a month plus full online coaching.", price_cents: 39900, billing_interval: "month", credits: 4, credits_expire_days: 45, includes_programming: true, features: ["4 sessions / month", "Everything in Online coaching"], featured: true, sort_order: 4 },
         { business_id: biz, kind: "one_time", name: "Movement assessment", description: "A 75-minute assessment and written plan.", price_cents: 12500, sort_order: 5 },
-      ]).select("id"),
+      ], { defaultToNull: false }).select("id"),
     );
   }
 
@@ -217,7 +217,7 @@ async function seedIronworks() {
     must(
       await db.from("session_types").insert([
         { business_id: biz, coach_ids: [owner], slug: "strength-session", name: "Strength session", duration_minutes: 60, price_cents: 8000, location_type: "in_person", location_details: "Ironworks, 9 W Lake St, Chicago", sort_order: 1, color: "#1d4ed8" },
-      ]).select("id"),
+      ], { defaultToNull: false }).select("id"),
     );
     must(await db.from("availability_rules").insert(weekdayRules(biz, owner, [1, 2, 3, 4], [["07:00", "13:00"]])).select("id"));
     must(

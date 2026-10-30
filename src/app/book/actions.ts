@@ -55,9 +55,9 @@ export async function createBookingAction(_: ActionState, formData: FormData): P
     guest = { name: input.name, email: input.email, phone: input.phone };
   }
 
-  let leadId: string | null = null;
+  let lead: { id: string; isNew: boolean } | null = null;
   if (!clientId && sessionType.is_consultation && guest) {
-    leadId = await captureConsultLead({
+    lead = await captureConsultLead({
       businessId: business.id,
       // Only a coach who actually runs this session (bookSlot re-checks before booking).
       coachId: input.coach !== "any" && coachesForType(sessionType, coaches).some((c) => c.id === input.coach) ? input.coach : null,
@@ -78,11 +78,11 @@ export async function createBookingAction(_: ActionState, formData: FormData): P
     clientTimezone: timezone,
     payment: input.payment,
     source: "public",
-    leadId,
+    leadId: lead?.id ?? null,
     coaches,
   });
   if (!result.ok) return { ok: false, error: result.error, data: { code: result.code ?? null } };
-  if (leadId) await markConsultBooked(leadId, result.booking);
+  if (lead) await markConsultBooked(lead.id, result.booking, { newLead: lead.isNew });
   redirect(result.redirectUrl);
 }
 

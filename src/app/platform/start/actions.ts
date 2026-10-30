@@ -147,7 +147,7 @@ async function seedStarterCatalog(businessId: string, ownerId: string, color: st
       sort_order: 1,
       color,
     },
-  ]);
+  ], { defaultToNull: false });
   if (error) console.error("[start] seed session types", error);
   const { error: hoursError } = await admin.from("availability_rules").insert(
     [1, 2, 3, 4, 5].map((weekday) => ({

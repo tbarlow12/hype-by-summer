@@ -189,7 +189,7 @@ export async function captureConsultLead(input: {
   email: string;
   name: string;
   phone?: string;
-}): Promise<string | null> {
+}): Promise<{ id: string; isNew: boolean } | null> {
   try {
     const [firstName, ...rest] = input.name.trim().split(/\s+/);
     const lead = await captureLead({
@@ -202,7 +202,9 @@ export async function captureConsultLead(input: {
       source: "booking",
       attribution: await readAttribution(),
     });
-    return lead.id;
+    // A lead seen for the first time just now (vs. a returning one).
+    const isNew = Date.now() - new Date(lead.created_at).getTime() < 60_000;
+    return { id: lead.id, isNew };
   } catch (err) {
     console.error("[scheduling] lead capture failed", err);
     return null;
@@ -213,13 +215,16 @@ export async function captureConsultLead(input: {
  * Once a consult booking exists: the lead gets the booking's coach (unless
  * already assigned) and a consult_booked event (which also moves its status).
  */
-export async function markConsultBooked(leadId: string, booking: Booking) {
-  await createAdminClient()
+export async function markConsultBooked(leadId: string, booking: Booking, opts: { newLead?: boolean } = {}) {
+  // A brand-new lead goes to the coach the consult landed with (its
+  // provisional round-robin assignee never worked it); a returning lead keeps
+  // its coach, and an unassigned one gets the booking's coach.
+  const assign = createAdminClient()
     .from("leads")
     .update({ assigned_coach_id: booking.coach_id })
     .eq("id", leadId)
-    .eq("business_id", booking.business_id)
-    .is("assigned_coach_id", null);
+    .eq("business_id", booking.business_id);
+  await (opts.newLead ? assign : assign.is("assigned_coach_id", null));
   try {
     await recordLeadEvent({
       businessId: booking.business_id,
