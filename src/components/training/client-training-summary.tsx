@@ -1,41 +1,44 @@
 // OWNER: training. Server component rendered on the coach's client detail page
+// (scoped to the current business; any staff member sees it)
 // (/coach/clients/[id]): active program + adherence, recent workout logs and
 // feedback, latest check-in, body metrics trend, PRs, open form-check count.
 import Link from "next/link";
 import { Badge, Card, CardTitle, LinkButton } from "@/components/ui";
 import { Sparkline } from "@/components/charts";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { adherenceByWeek, feedbackFlags, adherenceToDate } from "@/lib/training/adherence";
 import { respondToCheckIn, respondToProgramFeedback, respondToWorkoutLog } from "@/lib/training/coach-actions";
 import { longDateLabel, programPosition, todayInTz } from "@/lib/training/dates";
 import { recentPRs } from "@/lib/training/records";
-import { getActiveProgram, getPersonalRecords, isTrainerOf, loadLogs, loadWorkouts } from "@/lib/training/server";
+import { getActiveProgram, getPersonalRecords, isClientOf, loadLogs, loadStaff, loadWorkouts } from "@/lib/training/server";
+import { displayName } from "@/lib/format";
 import { CheckInCard } from "./check-in-card";
 import { AdherenceBars, FlagBadges, ProgramFeedbackItem, WorkoutLogItem } from "./feedback";
 
 export async function ClientTrainingSummary({ clientId }: { clientId: string }) {
-  const trainer = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const supabase = await createClient();
-  if (!(await isTrainerOf(supabase, trainer.id, clientId))) return null;
-  const today = todayInTz(trainer.timezone);
+  if (!(await isClientOf(supabase, business.id, clientId))) return null;
+  const today = todayInTz(profile.timezone);
 
-  const program = await getActiveProgram(supabase, clientId);
-  const [workouts, programLogs, recent, checkInRes, metricsRes, videosRes, feedbackRes, prs] = await Promise.all([
+  const program = await getActiveProgram(supabase, business.id, clientId);
+  const [workouts, programLogs, recent, checkInRes, metricsRes, videosRes, feedbackRes, prs, staff] = await Promise.all([
     program ? loadWorkouts(supabase, program.id) : Promise.resolve([]),
-    program ? loadLogs(supabase, { clientId, programId: program.id, limit: 300 }) : Promise.resolve([]),
-    loadLogs(supabase, { clientId, limit: 5 }),
+    program ? loadLogs(supabase, { businessId: business.id, clientId, programId: program.id, limit: 300 }) : Promise.resolve([]),
+    loadLogs(supabase, { businessId: business.id, clientId, limit: 5 }),
     supabase
       .from("check_ins")
-      .select("*")
+      .select("*, responder:profiles!check_ins_responded_by_fkey(full_name)")
+      .eq("business_id", business.id)
       .eq("client_id", clientId)
-      .eq("trainer_id", trainer.id)
       .order("week_of", { ascending: false })
       .limit(1)
       .maybeSingle(),
     supabase
       .from("body_metrics")
       .select("measured_on, weight, unit_system")
+      .eq("business_id", business.id)
       .eq("client_id", clientId)
       .not("weight", "is", null)
       .order("measured_on", { ascending: false })
@@ -43,20 +46,23 @@ export async function ClientTrainingSummary({ clientId }: { clientId: string }) 
     supabase
       .from("video_submissions")
       .select("id", { count: "exact", head: true })
+      .eq("business_id", business.id)
       .eq("client_id", clientId)
-      .eq("trainer_id", trainer.id)
       .eq("status", "pending_review"),
     program
       ? supabase
           .from("program_feedback")
-          .select("*")
+          .select("*, responder:profiles!program_feedback_responded_by_fkey(full_name)")
+          .eq("business_id", business.id)
           .eq("program_id", program.id)
-          .is("trainer_response", null)
+          .is("coach_response", null)
           .order("created_at", { ascending: false })
           .limit(2)
       : Promise.resolve({ data: [] }),
-    getPersonalRecords(supabase, clientId),
+    getPersonalRecords(supabase, business.id, clientId),
+    program?.coach_id ? loadStaff(business.id) : Promise.resolve([]),
   ]);
+  const programCoach = program?.coach_id ? staff.find((m) => m.user_id === program.coach_id) : null;
 
   const position = program?.start_date ? programPosition(program.start_date, program.duration_weeks, today) : null;
   const currentWeek = position?.week ?? (program?.start_date && program.start_date <= today ? program.duration_weeks : null);
@@ -86,6 +92,7 @@ export async function ClientTrainingSummary({ clientId }: { clientId: string }) 
                     {program.name}
                   </Link>
                   {position ? ` · week ${position.week} of ${program.duration_weeks}` : program.start_date ? ` · starts ${longDateLabel(program.start_date)}` : ""}
+                  {programCoach ? ` · coach ${displayName(programCoach)}` : ""}
                 </p>
               ) : (
                 <p className="mt-0.5 text-sm text-zinc-500">No active program.</p>

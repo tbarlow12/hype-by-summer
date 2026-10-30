@@ -46,6 +46,7 @@ export default async function CoachLayout({ children }: LayoutProps<"/coach">) {
     <AppShell
       brandName={business.name}
       logoUrl={business.logo_url}
+      businessId={business.id}
       nav={nav}
       user={{ name: displayName(profile), avatarUrl: profile.avatar_url, subtitle: titleCase(membership.role) }}
     >

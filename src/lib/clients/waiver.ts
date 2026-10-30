@@ -4,13 +4,11 @@
 // Bump WAIVER_VERSION whenever the text changes: clients who signed an older
 // version are asked to sign again.
 
-import { BRAND_NAME } from "@/lib/env";
-
 export const WAIVER_VERSION = "2026-10-v1";
 
 export const WAIVER_TITLE = "Assumption of Risk, Release of Liability and Consent to Participate";
 
-export function waiverSections(businessName: string = BRAND_NAME): { heading: string; body: string }[] {
+export function waiverSections(businessName: string): { heading: string; body: string }[] {
   return [
     {
       heading: "1. Voluntary participation",

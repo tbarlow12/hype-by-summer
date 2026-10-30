@@ -1,11 +1,12 @@
 import { addDays, localDateOf, timeToMinutes, weekdayOf, zonedTimeToUtc } from "./tz";
 
-// Pure slot engine: given a trainer's weekly hours, overrides and existing
-// bookings, produce the bookable start times for one session type. No I/O.
+// Pure slot engine: given a coach's weekly hours, overrides and existing
+// bookings, produce the bookable start times for one session type. Team
+// slots are the union across the coaches who run that type. No I/O.
 
 export type AvailabilityRuleInput = {
-  weekday: number; // 0 = Sunday, trainer-local
-  start_time: string; // "HH:mm[:ss]" trainer-local
+  weekday: number; // 0 = Sunday, coach-local
+  start_time: string; // "HH:mm[:ss]" coach-local
   end_time: string; // "HH:mm[:ss]", may be "24:00"
   session_type_ids?: string[] | null; // null/empty = every type
 };
@@ -37,7 +38,7 @@ export type SessionTypeInput = {
 };
 
 export type SlotEngineInput = {
-  timezone: string; // trainer timezone
+  timezone: string; // coach timezone
   rules: AvailabilityRuleInput[];
   overrides: AvailabilityOverrideInput[];
   busy: BusyBookingInput[];
@@ -97,7 +98,7 @@ function subtractIntervals(base: Interval[], remove: Interval[]): Interval[] {
 export function availableWindows(input: Pick<SlotEngineInput, "timezone" | "rules" | "overrides" | "sessionType" | "from" | "to">): Interval[] {
   const { timezone, rules, overrides, sessionType, from, to } = input;
   const windows: Interval[] = [];
-  // Walk trainer-local dates with a day of margin on both sides.
+  // Walk coach-local dates with a day of margin on both sides.
   const first = addDays(localDateOf(from, timezone), -1);
   const last = addDays(localDateOf(to, timezone), 1);
   for (let date = first; date <= last; date = addDays(date, 1)) {
@@ -172,9 +173,62 @@ export function computeSlots(input: SlotEngineInput): Slot[] {
   return slots.filter((s, i) => i === 0 || slots[i - 1]!.start !== s.start);
 }
 
+/** One coach's inputs for team slot computation. */
+export type CoachAvailabilityInput = Pick<SlotEngineInput, "timezone" | "rules" | "overrides" | "busy"> & { coachId: string };
+
+/**
+ * A start time offered by one or more coaches. `coachIds` are the coaches with
+ * a free spot (or, for a full group slot, the coaches whose class is full),
+ * in the order the coaches were given. Spots and capacity are summed.
+ */
+export type TeamSlot = Slot & { coachIds: string[] };
+
+export type TeamSlotDay = { date: string; slots: TeamSlot[] };
+
+/** Union of every coach's slots for a session type ("any available coach"). */
+export function computeTeamSlots(
+  input: Omit<SlotEngineInput, "timezone" | "rules" | "overrides" | "busy"> & { coaches: CoachAvailabilityInput[] },
+): TeamSlot[] {
+  const { coaches, ...rest } = input;
+  const byStart = new Map<string, { slot: TeamSlot; free: string[]; full: string[] }>();
+  for (const coach of coaches) {
+    const slots = computeSlots({ ...rest, timezone: coach.timezone, rules: coach.rules, overrides: coach.overrides, busy: coach.busy });
+    for (const s of slots) {
+      let entry = byStart.get(s.start);
+      if (!entry) {
+        entry = { slot: { start: s.start, end: s.end, spotsLeft: 0, capacity: 0, coachIds: [] }, free: [], full: [] };
+        byStart.set(s.start, entry);
+      }
+      entry.slot.spotsLeft += s.spotsLeft;
+      entry.slot.capacity += s.capacity;
+      (s.spotsLeft > 0 ? entry.free : entry.full).push(coach.coachId);
+    }
+  }
+  return [...byStart.values()]
+    .map(({ slot, free, full }) => ({ ...slot, coachIds: free.length ? free : full }))
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/**
+ * Order in which to try coaches for an "any available coach" booking: the
+ * preferred coach (the client's primary coach) first, then the given order
+ * (the session type's coach list). Unknown ids are dropped.
+ */
+export function orderCoachCandidates(available: string[], opts: { preferred?: string | null; order?: string[] } = {}): string[] {
+  const set = new Set(available);
+  const out: string[] = [];
+  const push = (id: string | null | undefined) => {
+    if (id && set.has(id) && !out.includes(id)) out.push(id);
+  };
+  push(opts.preferred);
+  for (const id of opts.order ?? []) push(id);
+  for (const id of available) push(id);
+  return out;
+}
+
 /** Groups slots by calendar date in the given (viewer) timezone. */
-export function groupSlotsByDate(slots: Slot[], timeZone: string): SlotDay[] {
-  const days = new Map<string, Slot[]>();
+export function groupSlotsByDate<T extends Slot>(slots: T[], timeZone: string): { date: string; slots: T[] }[] {
+  const days = new Map<string, T[]>();
   for (const slot of slots) {
     const date = localDateOf(slot.start, timeZone);
     const list = days.get(date);

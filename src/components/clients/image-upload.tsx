@@ -9,23 +9,26 @@ const TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 /**
  * Uploads an image straight to the public-media bucket under
- * `<userId>/<prefix>-<timestamp>.<ext>` and puts the public URL into a hidden
+ * `<folder>/<prefix>-<timestamp>.<ext>` (folder = the user's id for avatars,
+ * the business id for logos and covers; storage policies allow both) and puts the public URL into a hidden
  * input named `name`, so the surrounding server-action form just saves a URL.
  */
 export function ImageUpload({
-  userId,
+  folder,
   name,
   prefix,
   defaultUrl,
   label,
   shape = "circle",
+  onChange,
 }: {
-  userId: string;
+  folder: string;
   name: string;
   prefix: string;
   defaultUrl?: string | null;
   label: string;
-  shape?: "circle" | "wide";
+  shape?: "circle" | "wide" | "square";
+  onChange?: (url: string) => void;
 }) {
   const [url, setUrl] = useState(defaultUrl ?? "");
   const [busy, setBusy] = useState(false);
@@ -40,7 +43,7 @@ export function ImageUpload({
     if (file.size > MAX_BYTES) return setError("Images must be 8 MB or smaller.");
     setBusy(true);
     const ext = (file.name.split(".").pop() || file.type.split("/")[1] || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const path = `${userId}/${prefix}-${Date.now()}.${ext}`;
+    const path = `${folder}/${prefix}-${Date.now()}.${ext}`;
     const supabase = createClient();
     const { error: upErr } = await supabase.storage.from("public-media").upload(path, file, {
       cacheControl: "31536000",

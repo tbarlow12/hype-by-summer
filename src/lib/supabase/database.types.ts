@@ -3035,6 +3035,10 @@ export type Database = {
         Args: { p_business: string | null };
         Returns: { client_id: string | null; balance: number | null; granted: number | null }[];
       };
+      coach_revenue_report: {
+        Args: { p_business: string | null; p_from: string | null; p_to: string | null };
+        Returns: { coach_id: string | null; payments: number | null; gross_cents: number | null; refunded_cents: number | null; net_cents: number | null; platform_fee_cents: number | null }[];
+      };
       consume_credits: {
         Args: { p_client: string | null; p_business: string | null; p_session_type: string | null; p_amount: number | null; p_booking: string | null };
         Returns: undefined;
@@ -3115,6 +3119,10 @@ export type Database = {
         Args: { p_conversation: string | null };
         Returns: string;
       };
+      next_lead_coach: {
+        Args: { p_business: string | null };
+        Returns: string;
+      };
       object_owner: {
         Args: { p_name: string | null };
         Returns: string;
@@ -3122,6 +3130,10 @@ export type Database = {
       outstanding_credits: {
         Args: { p_business: string | null };
         Returns: number;
+      };
+      platform_business_stats: {
+        Args: never;
+        Returns: { business_id: string | null; members: number | null; clients: number | null; processed_cents: number | null; refunded_cents: number | null; fees_cents: number | null; fees_refunded_cents: number | null; last_paid_at: string | null }[];
       };
       refund_booking_credits: {
         Args: { p_booking: string | null };
@@ -3144,7 +3156,7 @@ export type Database = {
         Returns: string;
       };
       unsubscribe_lead: {
-        Args: { p_token: string | null };
+        Args: { p_token: string | null; p_business?: string | null };
         Returns: Database["public"]["Tables"]["leads"]["Row"];
       };
     };

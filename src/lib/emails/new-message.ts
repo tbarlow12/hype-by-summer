@@ -1,8 +1,9 @@
 import type { EmailInput } from "@/lib/email";
-import { absoluteUrl, BRAND_NAME } from "@/lib/env";
+import type { Brand } from "@/lib/tenant";
 
 /** "You have a new message" email for chat (sent only after the recipient has been away a while). */
 export function newMessageEmail(input: {
+  brand: Brand;
   to: string;
   recipientName?: string | null;
   senderName: string;
@@ -12,6 +13,7 @@ export function newMessageEmail(input: {
 }): EmailInput {
   const preview = input.preview.length > 280 ? `${input.preview.slice(0, 277)}…` : input.preview;
   return {
+    brand: input.brand,
     to: input.to,
     subject: `New message from ${input.senderName}`,
     heading: `${input.senderName} sent you a message`,
@@ -19,7 +21,7 @@ export function newMessageEmail(input: {
       input.recipientName ? `Hi ${input.recipientName.split(" ")[0]},` : "Hi,",
       preview ? `“${preview}”` : `${input.senderName} sent you an attachment.`,
     ],
-    cta: { label: "Reply", url: absoluteUrl(input.link) },
-    footerNote: `You're getting this because you have unread messages on ${BRAND_NAME}. We only email when you haven't checked the thread for a while.`,
+    cta: { label: "Reply", url: new URL(input.link, input.brand.siteUrl).toString() },
+    footerNote: `You're getting this because you have unread messages with ${input.brand.name}. We only email when you haven't checked the thread for a while.`,
   };
 }

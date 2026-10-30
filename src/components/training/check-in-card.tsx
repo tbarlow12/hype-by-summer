@@ -3,6 +3,8 @@ import { Badge } from "@/components/ui";
 import type { ActionState } from "@/lib/actions";
 import type { Tables } from "@/lib/supabase/database.types";
 import { longDateLabel } from "@/lib/training/dates";
+import type { Responder } from "@/lib/training/server";
+import { CoachReply } from "./feedback";
 import { RespondForm } from "./respond-form";
 
 const METRICS: { key: keyof Tables<"check_ins">; label: string; invert?: boolean }[] = [
@@ -27,7 +29,7 @@ export function CheckInCard({
   defaultOpen,
   weightUnit = "lb",
 }: {
-  checkIn: Tables<"check_ins">;
+  checkIn: Tables<"check_ins"> & Responder;
   heading?: ReactNode;
   respondAction?: (state: ActionState, formData: FormData) => Promise<ActionState>;
   defaultOpen?: boolean;
@@ -71,15 +73,12 @@ export function CheckInCard({
           ) : null,
         )}
       </dl>
-      {checkIn.trainer_response ? (
-        <div className="mt-3 rounded-lg bg-brand/5 px-3 py-2 text-sm">
-          <p className="text-xs font-semibold text-brand">Coach</p>
-          <p className="whitespace-pre-line text-zinc-800 dark:text-zinc-200">{checkIn.trainer_response}</p>
-        </div>
+      {checkIn.coach_response ? (
+        <CoachReply className="mt-3" text={checkIn.coach_response} responder={checkIn.responder} at={checkIn.coach_responded_at} />
       ) : null}
       {respondAction ? (
         <div className="mt-3">
-          <RespondForm action={respondAction} existing={checkIn.trainer_response} defaultOpen={defaultOpen} placeholder="Thanks for checking in! This week let's focus on…" />
+          <RespondForm action={respondAction} existing={checkIn.coach_response} defaultOpen={defaultOpen} placeholder="Thanks for checking in! This week let's focus on…" />
         </div>
       ) : null}
     </article>

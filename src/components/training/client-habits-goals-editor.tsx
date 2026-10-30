@@ -1,8 +1,8 @@
-// Trainer-side editor for a client's habits and goals (embedded on /coach/clients/[id]).
+// Staff-side editor for a client's habits and goals (embedded on /coach/clients/[id]).
 import { ActionForm, SubmitButton } from "@/components/form";
 import { Badge, Card, CardTitle, Checkbox, Field, Input, Select } from "@/components/ui";
 import { ProgressBar } from "@/components/charts";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
   createClientGoal,
@@ -13,25 +13,26 @@ import {
 } from "@/lib/training/coach-actions";
 import { countInWeek, currentStreak, goalProgress } from "@/lib/training/habits";
 import { longDateLabel, todayInTz, weekStartMonday } from "@/lib/training/dates";
-import { isTrainerOf } from "@/lib/training/server";
+import { isClientOf } from "@/lib/training/server";
 import { ConfirmSubmit } from "./confirm-submit";
 
 export async function ClientHabitsGoalsEditor({ clientId }: { clientId: string }) {
-  const trainer = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const supabase = await createClient();
-  if (!(await isTrainerOf(supabase, trainer.id, clientId))) return null;
+  if (!(await isClientOf(supabase, business.id, clientId))) return null;
 
   const [{ data: client }, { data: habits }, { data: goals }] = await Promise.all([
     supabase.from("profiles").select("timezone").eq("id", clientId).maybeSingle(),
     supabase
       .from("habits")
-      .select("id, name, target_per_week, active, trainer_id, habit_logs(logged_on)")
+      .select("id, name, target_per_week, active, created_by, habit_logs(logged_on)")
+      .eq("business_id", business.id)
       .eq("client_id", clientId)
       .order("active", { ascending: false })
       .order("created_at"),
-    supabase.from("goals").select("*").eq("client_id", clientId).order("achieved_at", { ascending: true, nullsFirst: true }).order("created_at"),
+    supabase.from("goals").select("*").eq("business_id", business.id).eq("client_id", clientId).order("achieved_at", { ascending: true, nullsFirst: true }).order("created_at"),
   ]);
-  const today = todayInTz(client?.timezone ?? trainer.timezone);
+  const today = todayInTz(client?.timezone ?? profile.timezone);
   const weekStart = weekStartMonday(today);
 
   return (
@@ -50,7 +51,7 @@ export async function ClientHabitsGoalsEditor({ clientId }: { clientId: string }
                   <div className="min-w-0">
                     <p className={h.active ? "truncate text-sm font-medium" : "truncate text-sm text-zinc-400 line-through"}>{h.name}</p>
                     <p className="text-xs text-zinc-500">
-                      {week}/{h.target_per_week} this week · streak {currentStreak(logged, today)}d{h.trainer_id ? "" : " · client's own"}
+                      {week}/{h.target_per_week} this week · streak {currentStreak(logged, today)}d{h.created_by && h.created_by !== clientId ? "" : " · client's own"}
                     </p>
                   </div>
                   <ActionForm action={setClientHabitActive.bind(null, h.id, !h.active)}>

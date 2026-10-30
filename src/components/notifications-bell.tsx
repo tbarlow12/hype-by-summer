@@ -8,11 +8,15 @@ import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/database.types";
 
 type Notification = Pick<Tables<"notifications">, "id" | "type" | "title" | "body" | "link" | "read_at" | "created_at">;
+type NotificationRow = Notification & Pick<Tables<"notifications">, "user_id" | "business_id">;
 
 const LIMIT = 20;
 
-/** Bell with unread count, dropdown list, mark-all-read and realtime inserts. */
-export function NotificationsBell() {
+/**
+ * Bell with unread count, dropdown list, mark-all-read and realtime inserts,
+ * scoped to the current business (null = the platform's own pages).
+ */
+export function NotificationsBell({ businessId }: { businessId: string | null }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
@@ -24,20 +28,25 @@ export function NotificationsBell() {
 
   const load = useCallback(
     async (uid: string) => {
-      const [{ data }, { count }] = await Promise.all([
-        supabase
-          .from("notifications")
-          .select("id, type, title, body, link, read_at, created_at")
-          .eq("user_id", uid)
-          .order("created_at", { ascending: false })
-          .limit(LIMIT),
-        supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", uid).is("read_at", null),
-      ]);
+      let list = supabase
+        .from("notifications")
+        .select("id, type, title, body, link, read_at, created_at")
+        .eq("user_id", uid);
+      let unreadQ = supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", uid).is("read_at", null);
+      // Only this business's notifications (platform pages: platform notices only).
+      if (businessId) {
+        list = list.eq("business_id", businessId);
+        unreadQ = unreadQ.eq("business_id", businessId);
+      } else {
+        list = list.is("business_id", null);
+        unreadQ = unreadQ.is("business_id", null);
+      }
+      const [{ data }, { count }] = await Promise.all([list.order("created_at", { ascending: false }).limit(LIMIT), unreadQ]);
       setItems(data ?? []);
       setUnread(count ?? 0);
       setLoaded(true);
     },
-    [supabase],
+    [supabase, businessId],
   );
 
   useEffect(() => {
@@ -56,22 +65,21 @@ export function NotificationsBell() {
 
   useEffect(() => {
     if (!userId) return;
+    // Realtime rows are RLS-filtered to the signed-in user; subscribe to this business only.
+    const filter = businessId ? `business_id=eq.${businessId}` : `user_id=eq.${userId}`;
     const channel = supabase
-      .channel(`notifications:${userId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-        (payload) => {
-          const n = payload.new as Notification;
-          setItems((prev) => (prev.some((x) => x.id === n.id) ? prev : [n, ...prev].slice(0, LIMIT)));
-          if (!n.read_at) setUnread((u) => u + 1);
-        },
-      )
+      .channel(`notifications:${userId}:${businessId ?? "platform"}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter }, (payload) => {
+        const n = payload.new as NotificationRow;
+        if (n.user_id !== userId || (n.business_id ?? null) !== businessId) return;
+        setItems((prev) => (prev.some((x) => x.id === n.id) ? prev : [n, ...prev].slice(0, LIMIT)));
+        if (!n.read_at) setUnread((u) => u + 1);
+      })
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [supabase, userId]);
+  }, [supabase, userId, businessId]);
 
   // Close on outside click / Escape.
   useEffect(() => {
@@ -93,7 +101,8 @@ export function NotificationsBell() {
     const now = new Date().toISOString();
     setItems((prev) => prev.map((n) => (n.read_at ? n : { ...n, read_at: now })));
     setUnread(0);
-    await supabase.from("notifications").update({ read_at: now }).eq("user_id", userId).is("read_at", null);
+    const q = supabase.from("notifications").update({ read_at: now }).eq("user_id", userId).is("read_at", null);
+    await (businessId ? q.eq("business_id", businessId) : q.is("business_id", null));
   }
 
   async function openItem(n: Notification) {

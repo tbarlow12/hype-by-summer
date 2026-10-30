@@ -32,6 +32,7 @@ export default async function ClientLayout({ children }: LayoutProps<"/me">) {
     <AppShell
       brandName={business.name}
       logoUrl={business.logo_url}
+      businessId={business.id}
       nav={nav}
       user={{ name: displayName(profile), avatarUrl: profile.avatar_url, subtitle: profile.email }}
     >

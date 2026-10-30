@@ -7,6 +7,7 @@ import { NavLinks, type NavItem } from "./nav-links";
 export function AppShell({
   brandName,
   logoUrl,
+  businessId,
   nav,
   user,
   badge,
@@ -15,6 +16,8 @@ export function AppShell({
   /** The business's name (white-label: never the platform's). */
   brandName: string;
   logoUrl?: string | null;
+  /** Current business: the bell shows only its notifications. */
+  businessId?: string | null;
   nav: NavItem[];
   user: { name: string; avatarUrl?: string | null; subtitle?: string };
   badge?: ReactNode;
@@ -35,7 +38,7 @@ export function AppShell({
             </Link>
             <div className="flex items-center gap-1">
               {badge}
-              <NotificationsBell />
+              <NotificationsBell businessId={businessId ?? null} />
             </div>
           </div>
           <NavLinks items={nav} />

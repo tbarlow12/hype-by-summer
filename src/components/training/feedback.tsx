@@ -5,7 +5,7 @@ import type { ActionState } from "@/lib/actions";
 import type { Tables } from "@/lib/supabase/database.types";
 import { DIFFICULTY_LABELS, type FeedbackFlag, type WeekAdherence } from "@/lib/training/adherence";
 import { longDateLabel } from "@/lib/training/dates";
-import type { LogWithSets } from "@/lib/training/server";
+import type { LogWithSets, Responder } from "@/lib/training/server";
 import { titleCase } from "@/lib/format";
 import { RespondForm } from "./respond-form";
 
@@ -45,6 +45,30 @@ export function FlagBadges({ flags }: { flags: FeedbackFlag[] }) {
           {f.label}
         </Badge>
       ))}
+    </div>
+  );
+}
+
+/** The coach's reply, labelled with whoever on the team wrote it. */
+export function CoachReply({
+  text,
+  responder,
+  at,
+  className = "mt-2",
+}: {
+  text: string;
+  responder?: Responder["responder"];
+  at?: string | null;
+  className?: string;
+}) {
+  const name = responder?.full_name?.trim();
+  return (
+    <div className={cn(className, "rounded-lg bg-brand/5 px-3 py-2 text-sm")}>
+      <p className="text-xs font-semibold text-brand">
+        {name ? `${name} (coach)` : "Coach"}
+        {at ? <span className="ml-1 font-normal text-zinc-500">· {longDateLabel(at.slice(0, 10), { month: "short", day: "numeric" })}</span> : null}
+      </p>
+      <p className="whitespace-pre-line text-zinc-800 dark:text-zinc-200">{text}</p>
     </div>
   );
 }
@@ -127,22 +151,17 @@ export function WorkoutLogItem({
           {log.feedback}
         </blockquote>
       ) : null}
-      {log.trainer_response ? (
-        <div className="mt-2 rounded-lg bg-brand/5 px-3 py-2 text-sm">
-          <p className="text-xs font-semibold text-brand">Coach</p>
-          <p className="whitespace-pre-line text-zinc-800 dark:text-zinc-200">{log.trainer_response}</p>
-        </div>
-      ) : null}
+      {log.coach_response ? <CoachReply text={log.coach_response} responder={log.responder} at={log.coach_responded_at} /> : null}
       {respondAction ? (
         <div className="mt-2">
-          <RespondForm action={respondAction} existing={log.trainer_response} placeholder="Great work! Next time try…" />
+          <RespondForm action={respondAction} existing={log.coach_response} placeholder="Great work! Next time try…" />
         </div>
       ) : null}
     </article>
   );
 }
 
-export function ProgramFeedbackItem({ fb, respondAction }: { fb: Tables<"program_feedback">; respondAction?: Action }) {
+export function ProgramFeedbackItem({ fb, respondAction }: { fb: Tables<"program_feedback"> & Responder; respondAction?: Action }) {
   return (
     <article className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -176,15 +195,10 @@ export function ProgramFeedbackItem({ fb, respondAction }: { fb: Tables<"program
           </div>
         ) : null}
       </dl>
-      {fb.trainer_response ? (
-        <div className="mt-2 rounded-lg bg-brand/5 px-3 py-2 text-sm">
-          <p className="text-xs font-semibold text-brand">Coach</p>
-          <p className="whitespace-pre-line text-zinc-800 dark:text-zinc-200">{fb.trainer_response}</p>
-        </div>
-      ) : null}
+      {fb.coach_response ? <CoachReply text={fb.coach_response} responder={fb.responder} at={fb.coach_responded_at} /> : null}
       {respondAction ? (
         <div className="mt-2">
-          <RespondForm action={respondAction} existing={fb.trainer_response} placeholder="Thanks! Here's what I'll adjust…" />
+          <RespondForm action={respondAction} existing={fb.coach_response} placeholder="Thanks! Here's what I'll adjust…" />
         </div>
       ) : null}
     </article>
