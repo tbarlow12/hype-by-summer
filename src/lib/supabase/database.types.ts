@@ -13,36 +13,46 @@ export type Database = {
     Tables: {
       availability_overrides: {
         Row: {
+          business_id: string;
+          coach_id: string | null;
           created_at: string;
           ends_at: string;
           id: string;
           is_available: boolean;
           reason: string | null;
           starts_at: string;
-          trainer_id: string;
         };
         Insert: {
+          business_id: string;
+          coach_id?: string | null;
           created_at?: string;
           ends_at: string;
           id?: string;
           is_available?: boolean;
           reason?: string | null;
           starts_at: string;
-          trainer_id: string;
         };
         Update: {
+          business_id?: string;
+          coach_id?: string | null;
           created_at?: string;
           ends_at?: string;
           id?: string;
           is_available?: boolean;
           reason?: string | null;
           starts_at?: string;
-          trainer_id?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "availability_overrides_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "availability_overrides_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "availability_overrides_coach_id_fkey";
+            columns: ["coach_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -51,36 +61,46 @@ export type Database = {
       };
       availability_rules: {
         Row: {
+          business_id: string;
+          coach_id: string;
           created_at: string;
           end_time: string;
           id: string;
           session_type_ids: string[] | null;
           start_time: string;
-          trainer_id: string;
           weekday: number;
         };
         Insert: {
+          business_id: string;
+          coach_id: string;
           created_at?: string;
           end_time: string;
           id?: string;
           session_type_ids?: string[] | null;
           start_time: string;
-          trainer_id: string;
           weekday: number;
         };
         Update: {
+          business_id?: string;
+          coach_id?: string;
           created_at?: string;
           end_time?: string;
           id?: string;
           session_type_ids?: string[] | null;
           start_time?: string;
-          trainer_id?: string;
           weekday?: number;
         };
         Relationships: [
           {
-            foreignKeyName: "availability_rules_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "availability_rules_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "availability_rules_coach_id_fkey";
+            columns: ["coach_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -91,6 +111,7 @@ export type Database = {
         Row: {
           arm: number | null;
           body_fat_pct: number | null;
+          business_id: string;
           chest: number | null;
           client_id: string;
           created_at: string;
@@ -107,6 +128,7 @@ export type Database = {
         Insert: {
           arm?: number | null;
           body_fat_pct?: number | null;
+          business_id: string;
           chest?: number | null;
           client_id: string;
           created_at?: string;
@@ -123,6 +145,7 @@ export type Database = {
         Update: {
           arm?: number | null;
           body_fat_pct?: number | null;
+          business_id?: string;
           chest?: number | null;
           client_id?: string;
           created_at?: string;
@@ -138,6 +161,13 @@ export type Database = {
         };
         Relationships: [
           {
+            foreignKeyName: "body_metrics_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "body_metrics_client_id_fkey";
             columns: ["client_id"];
             isOneToOne: false;
@@ -149,12 +179,15 @@ export type Database = {
       bookings: {
         Row: {
           blocked_range: string;
+          business_id: string;
           cancel_reason: string | null;
           cancelled_at: string | null;
           cancelled_by: string | null;
           client_id: string | null;
           client_notes: string | null;
           client_timezone: string | null;
+          coach_id: string;
+          coach_notes: string | null;
           confirmation_sent_at: string | null;
           created_at: string;
           credits_used: number;
@@ -178,19 +211,20 @@ export type Database = {
           starts_at: string;
           status: Database["public"]["Enums"]["booking_status"];
           stripe_checkout_session_id: string | null;
-          trainer_id: string;
-          trainer_notes: string | null;
           updated_at: string;
           video_room_url: string | null;
         };
         Insert: {
           blocked_range: string;
+          business_id: string;
           cancel_reason?: string | null;
           cancelled_at?: string | null;
           cancelled_by?: string | null;
           client_id?: string | null;
           client_notes?: string | null;
           client_timezone?: string | null;
+          coach_id: string;
+          coach_notes?: string | null;
           confirmation_sent_at?: string | null;
           created_at?: string;
           credits_used?: number;
@@ -214,19 +248,20 @@ export type Database = {
           starts_at: string;
           status?: Database["public"]["Enums"]["booking_status"];
           stripe_checkout_session_id?: string | null;
-          trainer_id: string;
-          trainer_notes?: string | null;
           updated_at?: string;
           video_room_url?: string | null;
         };
         Update: {
           blocked_range?: string;
+          business_id?: string;
           cancel_reason?: string | null;
           cancelled_at?: string | null;
           cancelled_by?: string | null;
           client_id?: string | null;
           client_notes?: string | null;
           client_timezone?: string | null;
+          coach_id?: string;
+          coach_notes?: string | null;
           confirmation_sent_at?: string | null;
           created_at?: string;
           credits_used?: number;
@@ -250,12 +285,17 @@ export type Database = {
           starts_at?: string;
           status?: Database["public"]["Enums"]["booking_status"];
           stripe_checkout_session_id?: string | null;
-          trainer_id?: string;
-          trainer_notes?: string | null;
           updated_at?: string;
           video_room_url?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "bookings_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "bookings_cancelled_by_fkey";
             columns: ["cancelled_by"];
@@ -266,6 +306,13 @@ export type Database = {
           {
             foreignKeyName: "bookings_client_id_fkey";
             columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "bookings_coach_id_fkey";
+            columns: ["coach_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -291,19 +338,13 @@ export type Database = {
             referencedRelation: "session_types";
             referencedColumns: ["id"];
           },
-          {
-            foreignKeyName: "bookings_trainer_id_fkey";
-            columns: ["trainer_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
         ];
       };
       broadcasts: {
         Row: {
           audience: string;
           body: string;
+          business_id: string;
           channels: Database["public"]["Enums"]["notification_channel"][];
           created_at: string;
           emails_failed: number;
@@ -311,14 +352,15 @@ export type Database = {
           id: string;
           recipient_count: number;
           sent_at: string | null;
+          sent_by: string | null;
           sms_body: string | null;
           sms_sent: number;
           subject: string;
-          trainer_id: string;
         };
         Insert: {
           audience?: string;
           body: string;
+          business_id: string;
           channels?: Database["public"]["Enums"]["notification_channel"][];
           created_at?: string;
           emails_failed?: number;
@@ -326,14 +368,15 @@ export type Database = {
           id?: string;
           recipient_count?: number;
           sent_at?: string | null;
+          sent_by?: string | null;
           sms_body?: string | null;
           sms_sent?: number;
           subject: string;
-          trainer_id: string;
         };
         Update: {
           audience?: string;
           body?: string;
+          business_id?: string;
           channels?: Database["public"]["Enums"]["notification_channel"][];
           created_at?: string;
           emails_failed?: number;
@@ -341,15 +384,281 @@ export type Database = {
           id?: string;
           recipient_count?: number;
           sent_at?: string | null;
+          sent_by?: string | null;
           sms_body?: string | null;
           sms_sent?: number;
           subject?: string;
-          trainer_id?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "broadcasts_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "broadcasts_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "broadcasts_sent_by_fkey";
+            columns: ["sent_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      business_clients: {
+        Row: {
+          business_id: string;
+          client_id: string;
+          created_at: string;
+          goals: string | null;
+          primary_coach_id: string | null;
+          started_at: string;
+          status: Database["public"]["Enums"]["relationship_status"];
+          stripe_customer_id: string | null;
+          tags: string[];
+          updated_at: string;
+        };
+        Insert: {
+          business_id: string;
+          client_id: string;
+          created_at?: string;
+          goals?: string | null;
+          primary_coach_id?: string | null;
+          started_at?: string;
+          status?: Database["public"]["Enums"]["relationship_status"];
+          stripe_customer_id?: string | null;
+          tags?: string[];
+          updated_at?: string;
+        };
+        Update: {
+          business_id?: string;
+          client_id?: string;
+          created_at?: string;
+          goals?: string | null;
+          primary_coach_id?: string | null;
+          started_at?: string;
+          status?: Database["public"]["Enums"]["relationship_status"];
+          stripe_customer_id?: string | null;
+          tags?: string[];
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "business_clients_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "business_clients_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "business_clients_primary_coach_id_fkey";
+            columns: ["primary_coach_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      business_members: {
+        Row: {
+          active: boolean;
+          bio: string | null;
+          business_id: string;
+          calendar_feed_token: string;
+          created_at: string;
+          invited_by: string | null;
+          is_bookable: boolean;
+          role: Database["public"]["Enums"]["member_role"];
+          slug: string | null;
+          specialties: string[];
+          title: string | null;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          active?: boolean;
+          bio?: string | null;
+          business_id: string;
+          calendar_feed_token?: string;
+          created_at?: string;
+          invited_by?: string | null;
+          is_bookable?: boolean;
+          role?: Database["public"]["Enums"]["member_role"];
+          slug?: string | null;
+          specialties?: string[];
+          title?: string | null;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          active?: boolean;
+          bio?: string | null;
+          business_id?: string;
+          calendar_feed_token?: string;
+          created_at?: string;
+          invited_by?: string | null;
+          is_bookable?: boolean;
+          role?: Database["public"]["Enums"]["member_role"];
+          slug?: string | null;
+          specialties?: string[];
+          title?: string | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "business_members_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "business_members_invited_by_fkey";
+            columns: ["invited_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "business_members_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      businesses: {
+        Row: {
+          accepting_new_clients: boolean;
+          bio: string | null;
+          brand_color: string;
+          cancellation_window_hours: number;
+          certifications: string[];
+          cover_image_url: string | null;
+          created_at: string;
+          created_by: string | null;
+          custom_domain: string | null;
+          default_location: string | null;
+          domain_verified_at: string | null;
+          font_preset: string;
+          headline: string | null;
+          id: string;
+          instagram_handle: string | null;
+          late_cancel_fee_cents: number;
+          logo_url: string | null;
+          name: string;
+          no_show_fee_cents: number;
+          plan: string;
+          platform_customer_id: string | null;
+          platform_fee_bps: number;
+          platform_subscription_id: string | null;
+          platform_subscription_status: string | null;
+          refund_on_cancel: boolean;
+          reminder_hours: number[];
+          slug: string;
+          specialties: string[];
+          status: string;
+          stripe_account_id: string | null;
+          stripe_charges_enabled: boolean;
+          stripe_details_submitted: boolean;
+          stripe_payouts_enabled: boolean;
+          support_email: string | null;
+          timezone: string;
+          updated_at: string;
+          website_url: string | null;
+        };
+        Insert: {
+          accepting_new_clients?: boolean;
+          bio?: string | null;
+          brand_color?: string;
+          cancellation_window_hours?: number;
+          certifications?: string[];
+          cover_image_url?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          custom_domain?: string | null;
+          default_location?: string | null;
+          domain_verified_at?: string | null;
+          font_preset?: string;
+          headline?: string | null;
+          id?: string;
+          instagram_handle?: string | null;
+          late_cancel_fee_cents?: number;
+          logo_url?: string | null;
+          name: string;
+          no_show_fee_cents?: number;
+          plan?: string;
+          platform_customer_id?: string | null;
+          platform_fee_bps?: number;
+          platform_subscription_id?: string | null;
+          platform_subscription_status?: string | null;
+          refund_on_cancel?: boolean;
+          reminder_hours?: number[];
+          slug: string;
+          specialties?: string[];
+          status?: string;
+          stripe_account_id?: string | null;
+          stripe_charges_enabled?: boolean;
+          stripe_details_submitted?: boolean;
+          stripe_payouts_enabled?: boolean;
+          support_email?: string | null;
+          timezone?: string;
+          updated_at?: string;
+          website_url?: string | null;
+        };
+        Update: {
+          accepting_new_clients?: boolean;
+          bio?: string | null;
+          brand_color?: string;
+          cancellation_window_hours?: number;
+          certifications?: string[];
+          cover_image_url?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          custom_domain?: string | null;
+          default_location?: string | null;
+          domain_verified_at?: string | null;
+          font_preset?: string;
+          headline?: string | null;
+          id?: string;
+          instagram_handle?: string | null;
+          late_cancel_fee_cents?: number;
+          logo_url?: string | null;
+          name?: string;
+          no_show_fee_cents?: number;
+          plan?: string;
+          platform_customer_id?: string | null;
+          platform_fee_bps?: number;
+          platform_subscription_id?: string | null;
+          platform_subscription_status?: string | null;
+          refund_on_cancel?: boolean;
+          reminder_hours?: number[];
+          slug?: string;
+          specialties?: string[];
+          status?: string;
+          stripe_account_id?: string | null;
+          stripe_charges_enabled?: boolean;
+          stripe_details_submitted?: boolean;
+          stripe_payouts_enabled?: boolean;
+          support_email?: string | null;
+          timezone?: string;
+          updated_at?: string;
+          website_url?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "businesses_created_by_fkey";
+            columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -359,59 +668,69 @@ export type Database = {
       check_ins: {
         Row: {
           body_weight: number | null;
+          business_id: string;
           client_id: string;
+          coach_responded_at: string | null;
+          coach_response: string | null;
           created_at: string;
           energy_level: number | null;
           id: string;
           nutrition_adherence: number | null;
           questions: string | null;
+          responded_by: string | null;
           sleep_quality: number | null;
           stress_level: number | null;
           struggles: string | null;
-          trainer_id: string;
-          trainer_responded_at: string | null;
-          trainer_response: string | null;
           training_adherence: number | null;
           week_of: string;
           wins: string | null;
         };
         Insert: {
           body_weight?: number | null;
+          business_id: string;
           client_id: string;
+          coach_responded_at?: string | null;
+          coach_response?: string | null;
           created_at?: string;
           energy_level?: number | null;
           id?: string;
           nutrition_adherence?: number | null;
           questions?: string | null;
+          responded_by?: string | null;
           sleep_quality?: number | null;
           stress_level?: number | null;
           struggles?: string | null;
-          trainer_id: string;
-          trainer_responded_at?: string | null;
-          trainer_response?: string | null;
           training_adherence?: number | null;
           week_of: string;
           wins?: string | null;
         };
         Update: {
           body_weight?: number | null;
+          business_id?: string;
           client_id?: string;
+          coach_responded_at?: string | null;
+          coach_response?: string | null;
           created_at?: string;
           energy_level?: number | null;
           id?: string;
           nutrition_adherence?: number | null;
           questions?: string | null;
+          responded_by?: string | null;
           sleep_quality?: number | null;
           stress_level?: number | null;
           struggles?: string | null;
-          trainer_id?: string;
-          trainer_responded_at?: string | null;
-          trainer_response?: string | null;
           training_adherence?: number | null;
           week_of?: string;
           wins?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "check_ins_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "check_ins_client_id_fkey";
             columns: ["client_id"];
@@ -420,8 +739,8 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "check_ins_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "check_ins_responded_by_fkey";
+            columns: ["responded_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -431,6 +750,7 @@ export type Database = {
       client_intakes: {
         Row: {
           answers: Json;
+          business_id: string;
           client_id: string;
           created_at: string;
           emergency_contact_name: string | null;
@@ -440,7 +760,6 @@ export type Database = {
           injuries: string | null;
           medications: string | null;
           primary_goal: string | null;
-          trainer_id: string;
           updated_at: string;
           waiver_accepted_at: string | null;
           waiver_signature: string | null;
@@ -448,6 +767,7 @@ export type Database = {
         };
         Insert: {
           answers?: Json;
+          business_id: string;
           client_id: string;
           created_at?: string;
           emergency_contact_name?: string | null;
@@ -457,7 +777,6 @@ export type Database = {
           injuries?: string | null;
           medications?: string | null;
           primary_goal?: string | null;
-          trainer_id: string;
           updated_at?: string;
           waiver_accepted_at?: string | null;
           waiver_signature?: string | null;
@@ -465,6 +784,7 @@ export type Database = {
         };
         Update: {
           answers?: Json;
+          business_id?: string;
           client_id?: string;
           created_at?: string;
           emergency_contact_name?: string | null;
@@ -474,7 +794,6 @@ export type Database = {
           injuries?: string | null;
           medications?: string | null;
           primary_goal?: string | null;
-          trainer_id?: string;
           updated_at?: string;
           waiver_accepted_at?: string | null;
           waiver_signature?: string | null;
@@ -482,15 +801,15 @@ export type Database = {
         };
         Relationships: [
           {
-            foreignKeyName: "client_intakes_client_id_fkey";
-            columns: ["client_id"];
+            foreignKeyName: "client_intakes_business_id_fkey";
+            columns: ["business_id"];
             isOneToOne: false;
-            referencedRelation: "profiles";
+            referencedRelation: "businesses";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "client_intakes_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "client_intakes_client_id_fkey";
+            columns: ["client_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -499,43 +818,53 @@ export type Database = {
       };
       client_notes: {
         Row: {
+          author_id: string | null;
           body: string;
           booking_id: string | null;
+          business_id: string;
           client_id: string;
           created_at: string;
           id: string;
           pinned: boolean;
-          trainer_id: string;
         };
         Insert: {
+          author_id?: string | null;
           body: string;
           booking_id?: string | null;
+          business_id: string;
           client_id: string;
           created_at?: string;
           id?: string;
           pinned?: boolean;
-          trainer_id: string;
         };
         Update: {
+          author_id?: string | null;
           body?: string;
           booking_id?: string | null;
+          business_id?: string;
           client_id?: string;
           created_at?: string;
           id?: string;
           pinned?: boolean;
-          trainer_id?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "client_notes_client_id_fkey";
-            columns: ["client_id"];
+            foreignKeyName: "client_notes_author_id_fkey";
+            columns: ["author_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "client_notes_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "client_notes_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "client_notes_client_id_fkey";
+            columns: ["client_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -544,49 +873,49 @@ export type Database = {
       };
       conversations: {
         Row: {
+          business_id: string;
           client_emailed_at: string | null;
           client_id: string;
           client_last_read_at: string | null;
           created_at: string;
           id: string;
           last_message_at: string | null;
-          trainer_emailed_at: string | null;
-          trainer_id: string;
-          trainer_last_read_at: string | null;
+          staff_emailed_at: string | null;
+          staff_last_read_at: string | null;
         };
         Insert: {
+          business_id: string;
           client_emailed_at?: string | null;
           client_id: string;
           client_last_read_at?: string | null;
           created_at?: string;
           id?: string;
           last_message_at?: string | null;
-          trainer_emailed_at?: string | null;
-          trainer_id: string;
-          trainer_last_read_at?: string | null;
+          staff_emailed_at?: string | null;
+          staff_last_read_at?: string | null;
         };
         Update: {
+          business_id?: string;
           client_emailed_at?: string | null;
           client_id?: string;
           client_last_read_at?: string | null;
           created_at?: string;
           id?: string;
           last_message_at?: string | null;
-          trainer_emailed_at?: string | null;
-          trainer_id?: string;
-          trainer_last_read_at?: string | null;
+          staff_emailed_at?: string | null;
+          staff_last_read_at?: string | null;
         };
         Relationships: [
           {
-            foreignKeyName: "conversations_client_id_fkey";
-            columns: ["client_id"];
+            foreignKeyName: "conversations_business_id_fkey";
+            columns: ["business_id"];
             isOneToOne: false;
-            referencedRelation: "profiles";
+            referencedRelation: "businesses";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "conversations_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "conversations_client_id_fkey";
+            columns: ["client_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -596,6 +925,7 @@ export type Database = {
       credit_ledger: {
         Row: {
           booking_id: string | null;
+          business_id: string;
           client_id: string;
           created_at: string;
           created_by: string | null;
@@ -608,10 +938,10 @@ export type Database = {
           payment_id: string | null;
           reason: string;
           session_type_ids: string[] | null;
-          trainer_id: string;
         };
         Insert: {
           booking_id?: string | null;
+          business_id: string;
           client_id: string;
           created_at?: string;
           created_by?: string | null;
@@ -624,10 +954,10 @@ export type Database = {
           payment_id?: string | null;
           reason: string;
           session_type_ids?: string[] | null;
-          trainer_id: string;
         };
         Update: {
           booking_id?: string | null;
+          business_id?: string;
           client_id?: string;
           created_at?: string;
           created_by?: string | null;
@@ -640,7 +970,6 @@ export type Database = {
           payment_id?: string | null;
           reason?: string;
           session_type_ids?: string[] | null;
-          trainer_id?: string;
         };
         Relationships: [
           {
@@ -648,6 +977,13 @@ export type Database = {
             columns: ["booking_id"];
             isOneToOne: false;
             referencedRelation: "bookings";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "credit_ledger_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
             referencedColumns: ["id"];
           },
           {
@@ -685,20 +1021,15 @@ export type Database = {
             referencedRelation: "payments";
             referencedColumns: ["id"];
           },
-          {
-            foreignKeyName: "credit_ledger_trainer_id_fkey";
-            columns: ["trainer_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
         ];
       };
       exercises: {
         Row: {
+          business_id: string | null;
           category: string | null;
           coaching_cues: string[];
           created_at: string;
+          created_by: string | null;
           demo_video_url: string | null;
           equipment: string[];
           id: string;
@@ -707,13 +1038,14 @@ export type Database = {
           name: string;
           primary_muscles: string[];
           thumbnail_url: string | null;
-          trainer_id: string | null;
           updated_at: string;
         };
         Insert: {
+          business_id?: string | null;
           category?: string | null;
           coaching_cues?: string[];
           created_at?: string;
+          created_by?: string | null;
           demo_video_url?: string | null;
           equipment?: string[];
           id?: string;
@@ -722,13 +1054,14 @@ export type Database = {
           name: string;
           primary_muscles?: string[];
           thumbnail_url?: string | null;
-          trainer_id?: string | null;
           updated_at?: string;
         };
         Update: {
+          business_id?: string | null;
           category?: string | null;
           coaching_cues?: string[];
           created_at?: string;
+          created_by?: string | null;
           demo_video_url?: string | null;
           equipment?: string[];
           id?: string;
@@ -737,13 +1070,19 @@ export type Database = {
           name?: string;
           primary_muscles?: string[];
           thumbnail_url?: string | null;
-          trainer_id?: string | null;
           updated_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "exercises_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "exercises_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "exercises_created_by_fkey";
+            columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -753,8 +1092,10 @@ export type Database = {
       goals: {
         Row: {
           achieved_at: string | null;
+          business_id: string;
           client_id: string;
           created_at: string;
+          created_by: string | null;
           current_value: number | null;
           id: string;
           metric: string | null;
@@ -762,13 +1103,14 @@ export type Database = {
           target_date: string | null;
           target_value: number | null;
           title: string;
-          trainer_id: string | null;
           unit: string | null;
         };
         Insert: {
           achieved_at?: string | null;
+          business_id: string;
           client_id: string;
           created_at?: string;
+          created_by?: string | null;
           current_value?: number | null;
           id?: string;
           metric?: string | null;
@@ -776,13 +1118,14 @@ export type Database = {
           target_date?: string | null;
           target_value?: number | null;
           title: string;
-          trainer_id?: string | null;
           unit?: string | null;
         };
         Update: {
           achieved_at?: string | null;
+          business_id?: string;
           client_id?: string;
           created_at?: string;
+          created_by?: string | null;
           current_value?: number | null;
           id?: string;
           metric?: string | null;
@@ -790,10 +1133,16 @@ export type Database = {
           target_date?: string | null;
           target_value?: number | null;
           title?: string;
-          trainer_id?: string | null;
           unit?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "goals_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "goals_client_id_fkey";
             columns: ["client_id"];
@@ -802,8 +1151,8 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "goals_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "goals_created_by_fkey";
+            columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -836,32 +1185,42 @@ export type Database = {
       habits: {
         Row: {
           active: boolean;
+          business_id: string;
           client_id: string;
           created_at: string;
+          created_by: string | null;
           id: string;
           name: string;
           target_per_week: number;
-          trainer_id: string | null;
         };
         Insert: {
           active?: boolean;
+          business_id: string;
           client_id: string;
           created_at?: string;
+          created_by?: string | null;
           id?: string;
           name: string;
           target_per_week?: number;
-          trainer_id?: string | null;
         };
         Update: {
           active?: boolean;
+          business_id?: string;
           client_id?: string;
           created_at?: string;
+          created_by?: string | null;
           id?: string;
           name?: string;
           target_per_week?: number;
-          trainer_id?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "habits_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "habits_client_id_fkey";
             columns: ["client_id"];
@@ -870,8 +1229,8 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "habits_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "habits_created_by_fkey";
+            columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -926,6 +1285,7 @@ export type Database = {
           ask_goal: boolean;
           ask_phone: boolean;
           bullet_points: string[];
+          business_id: string;
           cover_image_url: string | null;
           created_at: string;
           cta_label: string;
@@ -936,7 +1296,6 @@ export type Database = {
           subtitle: string | null;
           thank_you_message: string | null;
           title: string;
-          trainer_id: string;
           updated_at: string;
         };
         Insert: {
@@ -944,6 +1303,7 @@ export type Database = {
           ask_goal?: boolean;
           ask_phone?: boolean;
           bullet_points?: string[];
+          business_id: string;
           cover_image_url?: string | null;
           created_at?: string;
           cta_label?: string;
@@ -954,7 +1314,6 @@ export type Database = {
           subtitle?: string | null;
           thank_you_message?: string | null;
           title: string;
-          trainer_id: string;
           updated_at?: string;
         };
         Update: {
@@ -962,6 +1321,7 @@ export type Database = {
           ask_goal?: boolean;
           ask_phone?: boolean;
           bullet_points?: string[];
+          business_id?: string;
           cover_image_url?: string | null;
           created_at?: string;
           cta_label?: string;
@@ -972,22 +1332,23 @@ export type Database = {
           subtitle?: string | null;
           thank_you_message?: string | null;
           title?: string;
-          trainer_id?: string;
           updated_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "lead_magnets_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "lead_magnets_business_id_fkey";
+            columns: ["business_id"];
             isOneToOne: false;
-            referencedRelation: "profiles";
+            referencedRelation: "businesses";
             referencedColumns: ["id"];
           },
         ];
       };
       leads: {
         Row: {
+          assigned_coach_id: string | null;
           budget_range: string | null;
+          business_id: string;
           city: string | null;
           consent_text: string | null;
           consented_at: string | null;
@@ -1026,7 +1387,6 @@ export type Database = {
           status: Database["public"]["Enums"]["lead_status"];
           tags: string[];
           timeline: string | null;
-          trainer_id: string;
           unsubscribe_token: string;
           unsubscribed_at: string | null;
           updated_at: string;
@@ -1039,7 +1399,9 @@ export type Database = {
           zip_code: string | null;
         };
         Insert: {
+          assigned_coach_id?: string | null;
           budget_range?: string | null;
+          business_id: string;
           city?: string | null;
           consent_text?: string | null;
           consented_at?: string | null;
@@ -1078,7 +1440,6 @@ export type Database = {
           status?: Database["public"]["Enums"]["lead_status"];
           tags?: string[];
           timeline?: string | null;
-          trainer_id: string;
           unsubscribe_token?: string;
           unsubscribed_at?: string | null;
           updated_at?: string;
@@ -1091,7 +1452,9 @@ export type Database = {
           zip_code?: string | null;
         };
         Update: {
+          assigned_coach_id?: string | null;
           budget_range?: string | null;
+          business_id?: string;
           city?: string | null;
           consent_text?: string | null;
           consented_at?: string | null;
@@ -1130,7 +1493,6 @@ export type Database = {
           status?: Database["public"]["Enums"]["lead_status"];
           tags?: string[];
           timeline?: string | null;
-          trainer_id?: string;
           unsubscribe_token?: string;
           unsubscribed_at?: string | null;
           updated_at?: string;
@@ -1143,6 +1505,20 @@ export type Database = {
           zip_code?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "leads_assigned_coach_id_fkey";
+            columns: ["assigned_coach_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "leads_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "leads_converted_client_id_fkey";
             columns: ["converted_client_id"];
@@ -1164,13 +1540,6 @@ export type Database = {
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
-          {
-            foreignKeyName: "leads_trainer_id_fkey";
-            columns: ["trainer_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
         ];
       };
       messages: {
@@ -1184,7 +1553,7 @@ export type Database = {
           edited_at: string | null;
           id: string;
           kind: Database["public"]["Enums"]["message_kind"];
-          sender_id: string;
+          sender_id: string | null;
           video_submission_id: string | null;
           workout_log_id: string | null;
         };
@@ -1198,7 +1567,7 @@ export type Database = {
           edited_at?: string | null;
           id?: string;
           kind?: Database["public"]["Enums"]["message_kind"];
-          sender_id: string;
+          sender_id?: string | null;
           video_submission_id?: string | null;
           workout_log_id?: string | null;
         };
@@ -1212,7 +1581,7 @@ export type Database = {
           edited_at?: string | null;
           id?: string;
           kind?: Database["public"]["Enums"]["message_kind"];
-          sender_id?: string;
+          sender_id?: string | null;
           video_submission_id?: string | null;
           workout_log_id?: string | null;
         };
@@ -1250,6 +1619,7 @@ export type Database = {
       notifications: {
         Row: {
           body: string | null;
+          business_id: string | null;
           created_at: string;
           id: string;
           link: string | null;
@@ -1260,6 +1630,7 @@ export type Database = {
         };
         Insert: {
           body?: string | null;
+          business_id?: string | null;
           created_at?: string;
           id?: string;
           link?: string | null;
@@ -1270,6 +1641,7 @@ export type Database = {
         };
         Update: {
           body?: string | null;
+          business_id?: string | null;
           created_at?: string;
           id?: string;
           link?: string | null;
@@ -1279,6 +1651,13 @@ export type Database = {
           user_id?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "notifications_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "notifications_user_id_fkey";
             columns: ["user_id"];
@@ -1292,6 +1671,7 @@ export type Database = {
         Row: {
           active: boolean;
           billing_interval: Database["public"]["Enums"]["billing_interval"] | null;
+          business_id: string;
           created_at: string;
           credits: number;
           credits_expire_days: number | null;
@@ -1314,13 +1694,13 @@ export type Database = {
           stripe_product_id: string | null;
           stripe_sync_error: string | null;
           stripe_synced_at: string | null;
-          trainer_id: string;
           trial_days: number;
           updated_at: string;
         };
         Insert: {
           active?: boolean;
           billing_interval?: Database["public"]["Enums"]["billing_interval"] | null;
+          business_id: string;
           created_at?: string;
           credits?: number;
           credits_expire_days?: number | null;
@@ -1343,13 +1723,13 @@ export type Database = {
           stripe_product_id?: string | null;
           stripe_sync_error?: string | null;
           stripe_synced_at?: string | null;
-          trainer_id: string;
           trial_days?: number;
           updated_at?: string;
         };
         Update: {
           active?: boolean;
           billing_interval?: Database["public"]["Enums"]["billing_interval"] | null;
+          business_id?: string;
           created_at?: string;
           credits?: number;
           credits_expire_days?: number | null;
@@ -1372,16 +1752,15 @@ export type Database = {
           stripe_product_id?: string | null;
           stripe_sync_error?: string | null;
           stripe_synced_at?: string | null;
-          trainer_id?: string;
           trial_days?: number;
           updated_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "offerings_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "offerings_business_id_fkey";
+            columns: ["business_id"];
             isOneToOne: false;
-            referencedRelation: "profiles";
+            referencedRelation: "businesses";
             referencedColumns: ["id"];
           },
         ];
@@ -1391,7 +1770,9 @@ export type Database = {
           amount_cents: number;
           amount_refunded_cents: number;
           booking_id: string | null;
+          business_id: string;
           client_id: string | null;
+          coach_id: string | null;
           created_at: string;
           currency: string;
           description: string | null;
@@ -1401,22 +1782,25 @@ export type Database = {
           offering_id: string | null;
           paid_at: string | null;
           payer_email: string | null;
+          platform_fee_cents: number;
           purpose: Database["public"]["Enums"]["payment_purpose"];
           receipt_url: string | null;
           status: Database["public"]["Enums"]["payment_status"];
+          stripe_account_id: string | null;
           stripe_charge_id: string | null;
           stripe_checkout_session_id: string | null;
           stripe_invoice_id: string | null;
           stripe_payment_intent_id: string | null;
           subscription_id: string | null;
-          trainer_id: string;
           updated_at: string;
         };
         Insert: {
           amount_cents: number;
           amount_refunded_cents?: number;
           booking_id?: string | null;
+          business_id: string;
           client_id?: string | null;
+          coach_id?: string | null;
           created_at?: string;
           currency?: string;
           description?: string | null;
@@ -1426,22 +1810,25 @@ export type Database = {
           offering_id?: string | null;
           paid_at?: string | null;
           payer_email?: string | null;
+          platform_fee_cents?: number;
           purpose: Database["public"]["Enums"]["payment_purpose"];
           receipt_url?: string | null;
           status?: Database["public"]["Enums"]["payment_status"];
+          stripe_account_id?: string | null;
           stripe_charge_id?: string | null;
           stripe_checkout_session_id?: string | null;
           stripe_invoice_id?: string | null;
           stripe_payment_intent_id?: string | null;
           subscription_id?: string | null;
-          trainer_id: string;
           updated_at?: string;
         };
         Update: {
           amount_cents?: number;
           amount_refunded_cents?: number;
           booking_id?: string | null;
+          business_id?: string;
           client_id?: string | null;
+          coach_id?: string | null;
           created_at?: string;
           currency?: string;
           description?: string | null;
@@ -1451,15 +1838,16 @@ export type Database = {
           offering_id?: string | null;
           paid_at?: string | null;
           payer_email?: string | null;
+          platform_fee_cents?: number;
           purpose?: Database["public"]["Enums"]["payment_purpose"];
           receipt_url?: string | null;
           status?: Database["public"]["Enums"]["payment_status"];
+          stripe_account_id?: string | null;
           stripe_charge_id?: string | null;
           stripe_checkout_session_id?: string | null;
           stripe_invoice_id?: string | null;
           stripe_payment_intent_id?: string | null;
           subscription_id?: string | null;
-          trainer_id?: string;
           updated_at?: string;
         };
         Relationships: [
@@ -1471,8 +1859,22 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "payments_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "payments_client_id_fkey";
             columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payments_coach_id_fkey";
+            columns: ["coach_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -1491,52 +1893,45 @@ export type Database = {
             referencedRelation: "subscriptions";
             referencedColumns: ["id"];
           },
-          {
-            foreignKeyName: "payments_trainer_id_fkey";
-            columns: ["trainer_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
         ];
       };
       platform_fees: {
         Row: {
           amount_cents: number;
           amount_refunded_cents: number;
+          business_id: string | null;
           charge_id: string | null;
           created_at: string;
           currency: string;
           id: string;
           stripe_account_id: string;
-          trainer_id: string | null;
         };
         Insert: {
           amount_cents: number;
           amount_refunded_cents?: number;
+          business_id?: string | null;
           charge_id?: string | null;
           created_at?: string;
           currency?: string;
           id: string;
           stripe_account_id: string;
-          trainer_id?: string | null;
         };
         Update: {
           amount_cents?: number;
           amount_refunded_cents?: number;
+          business_id?: string | null;
           charge_id?: string | null;
           created_at?: string;
           currency?: string;
           id?: string;
           stripe_account_id?: string;
-          trainer_id?: string | null;
         };
         Relationships: [
           {
-            foreignKeyName: "platform_fees_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "platform_fees_business_id_fkey";
+            columns: ["business_id"];
             isOneToOne: false;
-            referencedRelation: "profiles";
+            referencedRelation: "businesses";
             referencedColumns: ["id"];
           },
         ];
@@ -1549,12 +1944,11 @@ export type Database = {
           email: string;
           full_name: string | null;
           id: string;
+          is_platform_admin: boolean;
           marketing_opt_in: boolean;
           onboarded_at: string | null;
           phone: string | null;
-          role: Database["public"]["Enums"]["user_role"];
           sms_opt_in: boolean;
-          stripe_customer_id: string | null;
           timezone: string;
           updated_at: string;
         };
@@ -1565,12 +1959,11 @@ export type Database = {
           email: string;
           full_name?: string | null;
           id: string;
+          is_platform_admin?: boolean;
           marketing_opt_in?: boolean;
           onboarded_at?: string | null;
           phone?: string | null;
-          role?: Database["public"]["Enums"]["user_role"];
           sms_opt_in?: boolean;
-          stripe_customer_id?: string | null;
           timezone?: string;
           updated_at?: string;
         };
@@ -1581,12 +1974,11 @@ export type Database = {
           email?: string;
           full_name?: string | null;
           id?: string;
+          is_platform_admin?: boolean;
           marketing_opt_in?: boolean;
           onboarded_at?: string | null;
           phone?: string | null;
-          role?: Database["public"]["Enums"]["user_role"];
           sms_opt_in?: boolean;
-          stripe_customer_id?: string | null;
           timezone?: string;
           updated_at?: string;
         };
@@ -1602,7 +1994,10 @@ export type Database = {
       };
       program_feedback: {
         Row: {
+          business_id: string;
           client_id: string;
+          coach_responded_at: string | null;
+          coach_response: string | null;
           created_at: string;
           difficulty: string | null;
           favorite_parts: string | null;
@@ -1611,13 +2006,15 @@ export type Database = {
           overall_rating: number | null;
           program_id: string;
           requested_changes: string | null;
-          trainer_responded_at: string | null;
-          trainer_response: string | null;
+          responded_by: string | null;
           volume: string | null;
           week: number | null;
         };
         Insert: {
+          business_id: string;
           client_id: string;
+          coach_responded_at?: string | null;
+          coach_response?: string | null;
           created_at?: string;
           difficulty?: string | null;
           favorite_parts?: string | null;
@@ -1626,13 +2023,15 @@ export type Database = {
           overall_rating?: number | null;
           program_id: string;
           requested_changes?: string | null;
-          trainer_responded_at?: string | null;
-          trainer_response?: string | null;
+          responded_by?: string | null;
           volume?: string | null;
           week?: number | null;
         };
         Update: {
+          business_id?: string;
           client_id?: string;
+          coach_responded_at?: string | null;
+          coach_response?: string | null;
           created_at?: string;
           difficulty?: string | null;
           favorite_parts?: string | null;
@@ -1641,12 +2040,18 @@ export type Database = {
           overall_rating?: number | null;
           program_id?: string;
           requested_changes?: string | null;
-          trainer_responded_at?: string | null;
-          trainer_response?: string | null;
+          responded_by?: string | null;
           volume?: string | null;
           week?: number | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "program_feedback_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "program_feedback_client_id_fkey";
             columns: ["client_id"];
@@ -1659,6 +2064,13 @@ export type Database = {
             columns: ["program_id"];
             isOneToOne: false;
             referencedRelation: "programs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "program_feedback_responded_by_fkey";
+            columns: ["responded_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
@@ -1709,7 +2121,9 @@ export type Database = {
       };
       programs: {
         Row: {
+          business_id: string;
           client_id: string | null;
+          coach_id: string | null;
           created_at: string;
           description: string | null;
           duration_weeks: number;
@@ -1719,11 +2133,12 @@ export type Database = {
           start_date: string | null;
           status: string;
           template_id: string | null;
-          trainer_id: string;
           updated_at: string;
         };
         Insert: {
+          business_id: string;
           client_id?: string | null;
+          coach_id?: string | null;
           created_at?: string;
           description?: string | null;
           duration_weeks?: number;
@@ -1733,11 +2148,12 @@ export type Database = {
           start_date?: string | null;
           status?: string;
           template_id?: string | null;
-          trainer_id: string;
           updated_at?: string;
         };
         Update: {
+          business_id?: string;
           client_id?: string | null;
+          coach_id?: string | null;
           created_at?: string;
           description?: string | null;
           duration_weeks?: number;
@@ -1747,13 +2163,26 @@ export type Database = {
           start_date?: string | null;
           status?: string;
           template_id?: string | null;
-          trainer_id?: string;
           updated_at?: string;
         };
         Relationships: [
           {
+            foreignKeyName: "programs_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "programs_client_id_fkey";
             columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "programs_coach_id_fkey";
+            columns: ["coach_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -1765,17 +2194,11 @@ export type Database = {
             referencedRelation: "programs";
             referencedColumns: ["id"];
           },
-          {
-            foreignKeyName: "programs_trainer_id_fkey";
-            columns: ["trainer_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
         ];
       };
       progress_photos: {
         Row: {
+          business_id: string;
           client_id: string;
           created_at: string;
           id: string;
@@ -1784,6 +2207,7 @@ export type Database = {
           taken_on: string;
         };
         Insert: {
+          business_id: string;
           client_id: string;
           created_at?: string;
           id?: string;
@@ -1792,6 +2216,7 @@ export type Database = {
           taken_on?: string;
         };
         Update: {
+          business_id?: string;
           client_id?: string;
           created_at?: string;
           id?: string;
@@ -1800,6 +2225,13 @@ export type Database = {
           taken_on?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "progress_photos_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "progress_photos_client_id_fkey";
             columns: ["client_id"];
@@ -1815,8 +2247,10 @@ export type Database = {
           allow_credits: boolean;
           buffer_after_minutes: number;
           buffer_before_minutes: number;
+          business_id: string;
           capacity: number;
           clients_only: boolean;
+          coach_ids: string[];
           color: string;
           created_at: string;
           credits_required: number;
@@ -1835,7 +2269,6 @@ export type Database = {
           slot_interval_minutes: number;
           slug: string;
           sort_order: number;
-          trainer_id: string;
           updated_at: string;
         };
         Insert: {
@@ -1843,8 +2276,10 @@ export type Database = {
           allow_credits?: boolean;
           buffer_after_minutes?: number;
           buffer_before_minutes?: number;
+          business_id: string;
           capacity?: number;
           clients_only?: boolean;
+          coach_ids: string[];
           color?: string;
           created_at?: string;
           credits_required?: number;
@@ -1863,7 +2298,6 @@ export type Database = {
           slot_interval_minutes?: number;
           slug: string;
           sort_order?: number;
-          trainer_id: string;
           updated_at?: string;
         };
         Update: {
@@ -1871,8 +2305,10 @@ export type Database = {
           allow_credits?: boolean;
           buffer_after_minutes?: number;
           buffer_before_minutes?: number;
+          business_id?: string;
           capacity?: number;
           clients_only?: boolean;
+          coach_ids?: string[];
           color?: string;
           created_at?: string;
           credits_required?: number;
@@ -1891,15 +2327,14 @@ export type Database = {
           slot_interval_minutes?: number;
           slug?: string;
           sort_order?: number;
-          trainer_id?: string;
           updated_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "session_types_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "session_types_business_id_fkey";
+            columns: ["business_id"];
             isOneToOne: false;
-            referencedRelation: "profiles";
+            referencedRelation: "businesses";
             referencedColumns: ["id"];
           },
         ];
@@ -1975,6 +2410,7 @@ export type Database = {
         Row: {
           body: string;
           booking_id: string | null;
+          business_id: string | null;
           created_at: string;
           error: string | null;
           id: string;
@@ -1988,6 +2424,7 @@ export type Database = {
         Insert: {
           body: string;
           booking_id?: string | null;
+          business_id?: string | null;
           created_at?: string;
           error?: string | null;
           id?: string;
@@ -2001,6 +2438,7 @@ export type Database = {
         Update: {
           body?: string;
           booking_id?: string | null;
+          business_id?: string | null;
           created_at?: string;
           error?: string | null;
           id?: string;
@@ -2017,6 +2455,13 @@ export type Database = {
             columns: ["booking_id"];
             isOneToOne: false;
             referencedRelation: "bookings";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "sms_messages_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
             referencedColumns: ["id"];
           },
           {
@@ -2044,47 +2489,9 @@ export type Database = {
         Relationships: [
         ];
       };
-      stripe_customers: {
-        Row: {
-          created_at: string;
-          customer_id: string;
-          profile_id: string;
-          stripe_account_id: string;
-          trainer_id: string;
-        };
-        Insert: {
-          created_at?: string;
-          customer_id: string;
-          profile_id: string;
-          stripe_account_id: string;
-          trainer_id: string;
-        };
-        Update: {
-          created_at?: string;
-          customer_id?: string;
-          profile_id?: string;
-          stripe_account_id?: string;
-          trainer_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "stripe_customers_profile_id_fkey";
-            columns: ["profile_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "stripe_customers_trainer_id_fkey";
-            columns: ["trainer_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       stripe_events: {
         Row: {
+          account: string | null;
           error: string | null;
           id: string;
           payload: Json;
@@ -2093,6 +2500,7 @@ export type Database = {
           type: string;
         };
         Insert: {
+          account?: string | null;
           error?: string | null;
           id: string;
           payload: Json;
@@ -2101,6 +2509,7 @@ export type Database = {
           type: string;
         };
         Update: {
+          account?: string | null;
           error?: string | null;
           id?: string;
           payload?: Json;
@@ -2113,9 +2522,11 @@ export type Database = {
       };
       subscriptions: {
         Row: {
+          business_id: string;
           cancel_at_period_end: boolean;
           canceled_at: string | null;
           client_id: string;
+          coach_id: string | null;
           created_at: string;
           current_period_end: string | null;
           current_period_start: string | null;
@@ -2124,14 +2535,15 @@ export type Database = {
           status: string;
           stripe_price_id: string | null;
           stripe_subscription_id: string;
-          trainer_id: string;
           trial_end: string | null;
           updated_at: string;
         };
         Insert: {
+          business_id: string;
           cancel_at_period_end?: boolean;
           canceled_at?: string | null;
           client_id: string;
+          coach_id?: string | null;
           created_at?: string;
           current_period_end?: string | null;
           current_period_start?: string | null;
@@ -2140,14 +2552,15 @@ export type Database = {
           status: string;
           stripe_price_id?: string | null;
           stripe_subscription_id: string;
-          trainer_id: string;
           trial_end?: string | null;
           updated_at?: string;
         };
         Update: {
+          business_id?: string;
           cancel_at_period_end?: boolean;
           canceled_at?: string | null;
           client_id?: string;
+          coach_id?: string | null;
           created_at?: string;
           current_period_end?: string | null;
           current_period_start?: string | null;
@@ -2156,14 +2569,27 @@ export type Database = {
           status?: string;
           stripe_price_id?: string | null;
           stripe_subscription_id?: string;
-          trainer_id?: string;
           trial_end?: string | null;
           updated_at?: string;
         };
         Relationships: [
           {
+            foreignKeyName: "subscriptions_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "subscriptions_client_id_fkey";
             columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_coach_id_fkey";
+            columns: ["coach_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -2175,13 +2601,6 @@ export type Database = {
             referencedRelation: "offerings";
             referencedColumns: ["id"];
           },
-          {
-            foreignKeyName: "subscriptions_trainer_id_fkey";
-            columns: ["trainer_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
         ];
       };
       testimonials: {
@@ -2189,33 +2608,43 @@ export type Database = {
           approved: boolean;
           author_name: string;
           body: string;
+          business_id: string;
           client_id: string | null;
+          coach_id: string | null;
           created_at: string;
           id: string;
           rating: number | null;
-          trainer_id: string;
         };
         Insert: {
           approved?: boolean;
           author_name: string;
           body: string;
+          business_id: string;
           client_id?: string | null;
+          coach_id?: string | null;
           created_at?: string;
           id?: string;
           rating?: number | null;
-          trainer_id: string;
         };
         Update: {
           approved?: boolean;
           author_name?: string;
           body?: string;
+          business_id?: string;
           client_id?: string | null;
+          coach_id?: string | null;
           created_at?: string;
           id?: string;
           rating?: number | null;
-          trainer_id?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "testimonials_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "testimonials_client_id_fkey";
             columns: ["client_id"];
@@ -2224,182 +2653,9 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "testimonials_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "testimonials_coach_id_fkey";
+            columns: ["coach_id"];
             isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      trainer_clients: {
-        Row: {
-          client_id: string;
-          created_at: string;
-          goals: string | null;
-          started_at: string;
-          status: Database["public"]["Enums"]["relationship_status"];
-          tags: string[];
-          trainer_id: string;
-          updated_at: string;
-        };
-        Insert: {
-          client_id: string;
-          created_at?: string;
-          goals?: string | null;
-          started_at?: string;
-          status?: Database["public"]["Enums"]["relationship_status"];
-          tags?: string[];
-          trainer_id: string;
-          updated_at?: string;
-        };
-        Update: {
-          client_id?: string;
-          created_at?: string;
-          goals?: string | null;
-          started_at?: string;
-          status?: Database["public"]["Enums"]["relationship_status"];
-          tags?: string[];
-          trainer_id?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "trainer_clients_client_id_fkey";
-            columns: ["client_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "trainer_clients_trainer_id_fkey";
-            columns: ["trainer_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      trainer_profiles: {
-        Row: {
-          accepting_new_clients: boolean;
-          bio: string | null;
-          brand_color: string;
-          business_name: string;
-          calendar_feed_token: string;
-          cancellation_window_hours: number;
-          certifications: string[];
-          cover_image_url: string | null;
-          created_at: string;
-          custom_domain: string | null;
-          default_location: string | null;
-          domain_verified_at: string | null;
-          font_preset: string;
-          headline: string | null;
-          instagram_handle: string | null;
-          late_cancel_fee_cents: number;
-          logo_url: string | null;
-          no_show_fee_cents: number;
-          plan: string;
-          platform_customer_id: string | null;
-          platform_fee_bps: number;
-          platform_subscription_id: string | null;
-          platform_subscription_status: string | null;
-          refund_on_cancel: boolean;
-          reminder_hours: number[];
-          slug: string;
-          specialties: string[];
-          status: string;
-          stripe_account_id: string | null;
-          stripe_charges_enabled: boolean;
-          stripe_details_submitted: boolean;
-          stripe_payouts_enabled: boolean;
-          support_email: string | null;
-          trainer_id: string;
-          updated_at: string;
-          website_url: string | null;
-        };
-        Insert: {
-          accepting_new_clients?: boolean;
-          bio?: string | null;
-          brand_color?: string;
-          business_name: string;
-          calendar_feed_token?: string;
-          cancellation_window_hours?: number;
-          certifications?: string[];
-          cover_image_url?: string | null;
-          created_at?: string;
-          custom_domain?: string | null;
-          default_location?: string | null;
-          domain_verified_at?: string | null;
-          font_preset?: string;
-          headline?: string | null;
-          instagram_handle?: string | null;
-          late_cancel_fee_cents?: number;
-          logo_url?: string | null;
-          no_show_fee_cents?: number;
-          plan?: string;
-          platform_customer_id?: string | null;
-          platform_fee_bps?: number;
-          platform_subscription_id?: string | null;
-          platform_subscription_status?: string | null;
-          refund_on_cancel?: boolean;
-          reminder_hours?: number[];
-          slug: string;
-          specialties?: string[];
-          status?: string;
-          stripe_account_id?: string | null;
-          stripe_charges_enabled?: boolean;
-          stripe_details_submitted?: boolean;
-          stripe_payouts_enabled?: boolean;
-          support_email?: string | null;
-          trainer_id: string;
-          updated_at?: string;
-          website_url?: string | null;
-        };
-        Update: {
-          accepting_new_clients?: boolean;
-          bio?: string | null;
-          brand_color?: string;
-          business_name?: string;
-          calendar_feed_token?: string;
-          cancellation_window_hours?: number;
-          certifications?: string[];
-          cover_image_url?: string | null;
-          created_at?: string;
-          custom_domain?: string | null;
-          default_location?: string | null;
-          domain_verified_at?: string | null;
-          font_preset?: string;
-          headline?: string | null;
-          instagram_handle?: string | null;
-          late_cancel_fee_cents?: number;
-          logo_url?: string | null;
-          no_show_fee_cents?: number;
-          plan?: string;
-          platform_customer_id?: string | null;
-          platform_fee_bps?: number;
-          platform_subscription_id?: string | null;
-          platform_subscription_status?: string | null;
-          refund_on_cancel?: boolean;
-          reminder_hours?: number[];
-          slug?: string;
-          specialties?: string[];
-          status?: string;
-          stripe_account_id?: string | null;
-          stripe_charges_enabled?: boolean;
-          stripe_details_submitted?: boolean;
-          stripe_payouts_enabled?: boolean;
-          support_email?: string | null;
-          trainer_id?: string;
-          updated_at?: string;
-          website_url?: string | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "trainer_profiles_trainer_id_fkey";
-            columns: ["trainer_id"];
-            isOneToOne: true;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
@@ -2449,51 +2705,71 @@ export type Database = {
       };
       video_submissions: {
         Row: {
+          business_id: string;
           client_id: string;
           client_note: string | null;
+          coach_id: string | null;
           created_at: string;
           duration_seconds: number | null;
           exercise_id: string | null;
           id: string;
           mime_type: string | null;
           reviewed_at: string | null;
+          reviewed_by: string | null;
           status: string;
           storage_path: string;
           title: string;
-          trainer_id: string;
         };
         Insert: {
+          business_id: string;
           client_id: string;
           client_note?: string | null;
+          coach_id?: string | null;
           created_at?: string;
           duration_seconds?: number | null;
           exercise_id?: string | null;
           id?: string;
           mime_type?: string | null;
           reviewed_at?: string | null;
+          reviewed_by?: string | null;
           status?: string;
           storage_path: string;
           title: string;
-          trainer_id: string;
         };
         Update: {
+          business_id?: string;
           client_id?: string;
           client_note?: string | null;
+          coach_id?: string | null;
           created_at?: string;
           duration_seconds?: number | null;
           exercise_id?: string | null;
           id?: string;
           mime_type?: string | null;
           reviewed_at?: string | null;
+          reviewed_by?: string | null;
           status?: string;
           storage_path?: string;
           title?: string;
-          trainer_id?: string;
         };
         Relationships: [
           {
+            foreignKeyName: "video_submissions_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "video_submissions_client_id_fkey";
             columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "video_submissions_coach_id_fkey";
+            columns: ["coach_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -2506,8 +2782,8 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "video_submissions_trainer_id_fkey";
-            columns: ["trainer_id"];
+            foreignKeyName: "video_submissions_reviewed_by_fkey";
+            columns: ["reviewed_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -2516,7 +2792,9 @@ export type Database = {
       };
       waitlist_entries: {
         Row: {
+          business_id: string;
           client_id: string | null;
+          coach_id: string;
           created_at: string;
           email: string;
           id: string;
@@ -2526,7 +2804,9 @@ export type Database = {
           starts_at: string;
         };
         Insert: {
+          business_id: string;
           client_id?: string | null;
+          coach_id: string;
           created_at?: string;
           email: string;
           id?: string;
@@ -2536,7 +2816,9 @@ export type Database = {
           starts_at: string;
         };
         Update: {
+          business_id?: string;
           client_id?: string | null;
+          coach_id?: string;
           created_at?: string;
           email?: string;
           id?: string;
@@ -2547,8 +2829,22 @@ export type Database = {
         };
         Relationships: [
           {
+            foreignKeyName: "waitlist_entries_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "waitlist_entries_client_id_fkey";
             columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "waitlist_entries_coach_id_fkey";
+            columns: ["coach_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -2621,7 +2917,10 @@ export type Database = {
       };
       workout_logs: {
         Row: {
+          business_id: string;
           client_id: string;
+          coach_responded_at: string | null;
+          coach_response: string | null;
           created_at: string;
           difficulty_rating: number | null;
           duration_minutes: number | null;
@@ -2631,14 +2930,16 @@ export type Database = {
           id: string;
           pain_flag: boolean;
           performed_on: string;
+          responded_by: string | null;
           session_rpe: number | null;
-          trainer_responded_at: string | null;
-          trainer_response: string | null;
           updated_at: string;
           workout_id: string | null;
         };
         Insert: {
+          business_id: string;
           client_id: string;
+          coach_responded_at?: string | null;
+          coach_response?: string | null;
           created_at?: string;
           difficulty_rating?: number | null;
           duration_minutes?: number | null;
@@ -2648,14 +2949,16 @@ export type Database = {
           id?: string;
           pain_flag?: boolean;
           performed_on?: string;
+          responded_by?: string | null;
           session_rpe?: number | null;
-          trainer_responded_at?: string | null;
-          trainer_response?: string | null;
           updated_at?: string;
           workout_id?: string | null;
         };
         Update: {
+          business_id?: string;
           client_id?: string;
+          coach_responded_at?: string | null;
+          coach_response?: string | null;
           created_at?: string;
           difficulty_rating?: number | null;
           duration_minutes?: number | null;
@@ -2665,16 +2968,29 @@ export type Database = {
           id?: string;
           pain_flag?: boolean;
           performed_on?: string;
+          responded_by?: string | null;
           session_rpe?: number | null;
-          trainer_responded_at?: string | null;
-          trainer_response?: string | null;
           updated_at?: string;
           workout_id?: string | null;
         };
         Relationships: [
           {
+            foreignKeyName: "workout_logs_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "workout_logs_client_id_fkey";
             columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "workout_logs_responded_by_fkey";
+            columns: ["responded_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -2699,44 +3015,52 @@ export type Database = {
         Args: { s: Database["public"]["Enums"]["booking_status"] | null; hold: string | null };
         Returns: boolean;
       };
-      can_view_program: {
+      can_edit_program: {
         Args: { p_program: string | null };
         Returns: boolean;
       };
-      can_view_workout: {
-        Args: { p_workout: string | null };
+      can_manage: {
+        Args: { p_business: string | null };
+        Returns: boolean;
+      };
+      can_view_program: {
+        Args: { p_program: string | null };
         Returns: boolean;
       };
       capture_lead: {
         Args: { p: Json | null };
         Returns: Database["public"]["Tables"]["leads"]["Row"];
       };
+      client_credit_balances: {
+        Args: { p_business: string | null };
+        Returns: { client_id: string | null; balance: number | null; granted: number | null }[];
+      };
       consume_credits: {
-        Args: { p_client: string | null; p_trainer: string | null; p_session_type: string | null; p_amount: number | null; p_booking: string | null };
+        Args: { p_client: string | null; p_business: string | null; p_session_type: string | null; p_amount: number | null; p_booking: string | null };
         Returns: undefined;
       };
       conversation_inbox: {
-        Args: never;
-        Returns: { conversation_id: string | null; trainer_id: string | null; client_id: string | null; other_id: string | null; other_name: string | null; other_email: string | null; other_avatar_url: string | null; last_message_at: string | null; last_body: string | null; last_kind: Database["public"]["Enums"]["message_kind"] | null; last_sender_id: string | null; last_deleted: boolean | null; unread_count: number | null }[];
+        Args: { p_business: string | null };
+        Returns: { conversation_id: string | null; client_id: string | null; client_name: string | null; client_email: string | null; client_avatar_url: string | null; last_message_at: string | null; last_body: string | null; last_kind: Database["public"]["Enums"]["message_kind"] | null; last_sender_id: string | null; last_deleted: boolean | null; unread_count: number | null }[];
       };
       copy_program_week: {
         Args: { p_program: string | null; p_from_week: number | null; p_to_weeks: number[] | null; p_replace?: boolean | null };
         Returns: number;
       };
+      create_business: {
+        Args: { p_slug: string | null; p_name: string | null; p_timezone: string | null };
+        Returns: Database["public"]["Tables"]["businesses"]["Row"];
+      };
       credit_balance: {
-        Args: { p_client: string | null; p_trainer: string | null; p_session_type?: string | null };
+        Args: { p_client: string | null; p_business: string | null; p_session_type?: string | null };
         Returns: number;
       };
       credit_grants_remaining: {
-        Args: { p_client: string | null; p_trainer?: string | null };
-        Returns: { grant_id: string | null; trainer_id: string | null; granted: number | null; remaining: number | null; reason: string | null; offering_id: string | null; session_type_ids: string[] | null; expires_at: string | null; created_at: string | null }[];
-      };
-      current_role_is: {
-        Args: { r: Database["public"]["Enums"]["user_role"] | null };
-        Returns: boolean;
+        Args: { p_client: string | null; p_business: string | null };
+        Returns: { grant_id: string | null; granted: number | null; remaining: number | null; reason: string | null; offering_id: string | null; session_type_ids: string[] | null; expires_at: string | null; created_at: string | null }[];
       };
       debit_credits: {
-        Args: { p_client: string | null; p_trainer: string | null; p_amount: number | null; p_reason: string | null; p_note?: string | null; p_created_by?: string | null; p_payment?: string | null };
+        Args: { p_client: string | null; p_business: string | null; p_amount: number | null; p_reason: string | null; p_note?: string | null; p_created_by?: string | null; p_payment?: string | null };
         Returns: number;
       };
       duplicate_program: {
@@ -2748,31 +3072,39 @@ export type Database = {
         Returns: string;
       };
       ensure_conversation: {
-        Args: { p_trainer: string | null; p_client: string | null };
+        Args: { p_business: string | null; p_client: string | null };
         Returns: string;
       };
       expire_booking_holds: {
         Args: never;
         Returns: number;
       };
+      has_role: {
+        Args: { p_business: string | null; p_roles: Database["public"]["Enums"]["member_role"][] | null };
+        Returns: boolean;
+      };
       is_client_of: {
-        Args: { p_trainer: string | null };
+        Args: { p_business: string | null };
         Returns: boolean;
       };
       is_conversation_member: {
         Args: { p_conversation: string | null };
         Returns: boolean;
       };
-      is_staff: {
+      is_member: {
+        Args: { p_business: string | null };
+        Returns: boolean;
+      };
+      is_platform_admin: {
         Args: never;
         Returns: boolean;
       };
-      is_trainer_of: {
+      is_staff_for_client: {
         Args: { p_client: string | null };
         Returns: boolean;
       };
       lead_magnet_stats: {
-        Args: { p_trainer: string | null };
+        Args: { p_business: string | null };
         Returns: Json;
       };
       log_workout: {
@@ -2783,8 +3115,12 @@ export type Database = {
         Args: { p_conversation: string | null };
         Returns: string;
       };
+      object_owner: {
+        Args: { p_name: string | null };
+        Returns: string;
+      };
       outstanding_credits: {
-        Args: { p_trainer: string | null };
+        Args: { p_business: string | null };
         Returns: number;
       };
       refund_booking_credits: {
@@ -2792,16 +3128,20 @@ export type Database = {
         Returns: number;
       };
       reschedule_booking: {
-        Args: { p_booking: string | null; p_starts_at: string | null; p_actor?: string | null };
+        Args: { p_booking: string | null; p_starts_at: string | null; p_actor?: string | null; p_coach_id?: string | null };
         Returns: Database["public"]["Tables"]["bookings"]["Row"];
       };
       reserve_booking: {
-        Args: { p_session_type_id: string | null; p_starts_at: string | null; p_client_id: string | null; p_guest_name: string | null; p_guest_email: string | null; p_guest_phone: string | null; p_status: Database["public"]["Enums"]["booking_status"] | null; p_payment_method: Database["public"]["Enums"]["payment_method_kind"] | null; p_hold_minutes: number | null; p_client_notes: string | null; p_lead_id?: string | null; p_rescheduled_from?: string | null };
+        Args: { p_session_type_id: string | null; p_coach_id: string | null; p_starts_at: string | null; p_client_id: string | null; p_guest_name: string | null; p_guest_email: string | null; p_guest_phone: string | null; p_status: Database["public"]["Enums"]["booking_status"] | null; p_payment_method: Database["public"]["Enums"]["payment_method_kind"] | null; p_hold_minutes: number | null; p_client_notes: string | null; p_lead_id?: string | null; p_rescheduled_from?: string | null };
         Returns: Database["public"]["Tables"]["bookings"]["Row"];
       };
-      trainer_client_credit_balances: {
-        Args: { p_trainer: string | null };
-        Returns: { client_id: string | null; balance: number | null; granted: number | null }[];
+      shares_business_with: {
+        Args: { p_person: string | null };
+        Returns: boolean;
+      };
+      try_uuid: {
+        Args: { p: string | null };
+        Returns: string;
       };
       unsubscribe_lead: {
         Args: { p_token: string | null };
@@ -2814,6 +3154,7 @@ export type Database = {
       lead_event_type: "captured" | "magnet_delivered" | "magnet_downloaded" | "email_sent" | "note" | "status_changed" | "consult_booked" | "converted" | "page_view" | "invited" | "unsubscribed" | "contact_message";
       lead_status: "new" | "contacted" | "consult_booked" | "nurturing" | "converted" | "lost" | "unsubscribed";
       location_type: "in_person" | "virtual" | "phone" | "client_location";
+      member_role: "owner" | "admin" | "coach" | "staff";
       message_kind: "text" | "video" | "image" | "file" | "system" | "workout_share";
       notification_channel: "in_app" | "email" | "sms";
       offering_kind: "package" | "subscription" | "one_time";
@@ -2821,7 +3162,6 @@ export type Database = {
       payment_purpose: "booking" | "package" | "subscription" | "one_time" | "invoice" | "fee" | "tip";
       payment_status: "pending" | "succeeded" | "failed" | "refunded" | "partially_refunded" | "cancelled";
       relationship_status: "invited" | "active" | "paused" | "archived";
-      user_role: "trainer" | "client" | "admin";
     };
     CompositeTypes: { [_ in never]: never };
   };
