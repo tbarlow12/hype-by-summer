@@ -4,6 +4,8 @@ import type { NavItem } from "@/components/shell/nav-links";
 import { requireTrainer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { displayName } from "@/lib/format";
+import { getTenant, getTenantByTrainerId, tenantUrl } from "@/lib/tenant";
+import { platformUrl } from "@/lib/platform";
 
 export default async function CoachLayout({ children }: LayoutProps<"/coach">) {
   const profile = await requireTrainer();
@@ -16,9 +18,16 @@ export default async function CoachLayout({ children }: LayoutProps<"/coach">) {
     supabase.from("conversations").select("last_message_at, trainer_last_read_at").eq("trainer_id", profile.id),
   ]);
 
-  // First run: the storefront is created on /onboarding, which lives outside
-  // this layout so the redirect can't loop.
-  if (!storefront) redirect("/onboarding");
+  // First run: the business is created at /start on the platform site, which
+  // lives outside this layout so the redirect can't loop.
+  if (!storefront) redirect(platformUrl("/start"));
+
+  // Coaches manage their business on their own site; send them there.
+  const tenant = await getTenant();
+  if (!tenant || tenant.trainer_id !== profile.id) {
+    const own = await getTenantByTrainerId(profile.id);
+    if (own) redirect(tenantUrl(own, "/coach"));
+  }
 
   const unread = (convos ?? []).filter(
     (c) => c.last_message_at && (!c.trainer_last_read_at || c.last_message_at > c.trainer_last_read_at),

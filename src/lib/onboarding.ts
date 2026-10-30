@@ -1,27 +1,27 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPrimaryTrainer } from "@/lib/trainer";
+import { getTenant } from "@/lib/tenant";
 import type { Profile } from "@/lib/auth";
 
 /**
- * Make sure a signed-in client is attached to a trainer (the primary one by
- * default) and that any matching lead is marked converted. Idempotent.
+ * Make sure a signed-in client is attached to the trainer whose site they're
+ * on (or `trainerId`), and that any matching lead is marked converted.
+ * Idempotent. A person can be a client of several trainers' businesses.
  */
 export async function ensureClientLinked(profile: Profile, trainerId?: string): Promise<string | null> {
   if (profile.role !== "client") return null;
   const admin = createAdminClient();
 
+  const target = trainerId ?? (await getTenant())?.trainer_id;
+  if (!target) return null;
+
   const { data: existing } = await admin
     .from("trainer_clients")
-    .select("trainer_id")
+    .select("status")
+    .eq("trainer_id", target)
     .eq("client_id", profile.id)
-    .neq("status", "archived")
-    .limit(1)
     .maybeSingle();
-  if (existing && !trainerId) return existing.trainer_id;
-
-  const target = trainerId ?? (await getPrimaryTrainer())?.trainer_id;
-  if (!target) return null;
+  if (existing) return target;
 
   await admin
     .from("trainer_clients")

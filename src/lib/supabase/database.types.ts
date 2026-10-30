@@ -1500,6 +1500,47 @@ export type Database = {
           },
         ];
       };
+      platform_fees: {
+        Row: {
+          amount_cents: number;
+          amount_refunded_cents: number;
+          charge_id: string | null;
+          created_at: string;
+          currency: string;
+          id: string;
+          stripe_account_id: string;
+          trainer_id: string | null;
+        };
+        Insert: {
+          amount_cents: number;
+          amount_refunded_cents?: number;
+          charge_id?: string | null;
+          created_at?: string;
+          currency?: string;
+          id: string;
+          stripe_account_id: string;
+          trainer_id?: string | null;
+        };
+        Update: {
+          amount_cents?: number;
+          amount_refunded_cents?: number;
+          charge_id?: string | null;
+          created_at?: string;
+          currency?: string;
+          id?: string;
+          stripe_account_id?: string;
+          trainer_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "platform_fees_trainer_id_fkey";
+            columns: ["trainer_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       profiles: {
         Row: {
           avatar_url: string | null;
@@ -2003,6 +2044,45 @@ export type Database = {
         Relationships: [
         ];
       };
+      stripe_customers: {
+        Row: {
+          created_at: string;
+          customer_id: string;
+          profile_id: string;
+          stripe_account_id: string;
+          trainer_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          customer_id: string;
+          profile_id: string;
+          stripe_account_id: string;
+          trainer_id: string;
+        };
+        Update: {
+          created_at?: string;
+          customer_id?: string;
+          profile_id?: string;
+          stripe_account_id?: string;
+          trainer_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "stripe_customers_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "stripe_customers_trainer_id_fkey";
+            columns: ["trainer_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       stripe_events: {
         Row: {
           error: string | null;
@@ -2211,15 +2291,30 @@ export type Database = {
           certifications: string[];
           cover_image_url: string | null;
           created_at: string;
+          custom_domain: string | null;
           default_location: string | null;
+          domain_verified_at: string | null;
+          font_preset: string;
           headline: string | null;
           instagram_handle: string | null;
           late_cancel_fee_cents: number;
+          logo_url: string | null;
           no_show_fee_cents: number;
+          plan: string;
+          platform_customer_id: string | null;
+          platform_fee_bps: number;
+          platform_subscription_id: string | null;
+          platform_subscription_status: string | null;
           refund_on_cancel: boolean;
           reminder_hours: number[];
           slug: string;
           specialties: string[];
+          status: string;
+          stripe_account_id: string | null;
+          stripe_charges_enabled: boolean;
+          stripe_details_submitted: boolean;
+          stripe_payouts_enabled: boolean;
+          support_email: string | null;
           trainer_id: string;
           updated_at: string;
           website_url: string | null;
@@ -2234,15 +2329,30 @@ export type Database = {
           certifications?: string[];
           cover_image_url?: string | null;
           created_at?: string;
+          custom_domain?: string | null;
           default_location?: string | null;
+          domain_verified_at?: string | null;
+          font_preset?: string;
           headline?: string | null;
           instagram_handle?: string | null;
           late_cancel_fee_cents?: number;
+          logo_url?: string | null;
           no_show_fee_cents?: number;
+          plan?: string;
+          platform_customer_id?: string | null;
+          platform_fee_bps?: number;
+          platform_subscription_id?: string | null;
+          platform_subscription_status?: string | null;
           refund_on_cancel?: boolean;
           reminder_hours?: number[];
           slug: string;
           specialties?: string[];
+          status?: string;
+          stripe_account_id?: string | null;
+          stripe_charges_enabled?: boolean;
+          stripe_details_submitted?: boolean;
+          stripe_payouts_enabled?: boolean;
+          support_email?: string | null;
           trainer_id: string;
           updated_at?: string;
           website_url?: string | null;
@@ -2257,15 +2367,30 @@ export type Database = {
           certifications?: string[];
           cover_image_url?: string | null;
           created_at?: string;
+          custom_domain?: string | null;
           default_location?: string | null;
+          domain_verified_at?: string | null;
+          font_preset?: string;
           headline?: string | null;
           instagram_handle?: string | null;
           late_cancel_fee_cents?: number;
+          logo_url?: string | null;
           no_show_fee_cents?: number;
+          plan?: string;
+          platform_customer_id?: string | null;
+          platform_fee_bps?: number;
+          platform_subscription_id?: string | null;
+          platform_subscription_status?: string | null;
           refund_on_cancel?: boolean;
           reminder_hours?: number[];
           slug?: string;
           specialties?: string[];
+          status?: string;
+          stripe_account_id?: string | null;
+          stripe_charges_enabled?: boolean;
+          stripe_details_submitted?: boolean;
+          stripe_payouts_enabled?: boolean;
+          support_email?: string | null;
           trainer_id?: string;
           updated_at?: string;
           website_url?: string | null;

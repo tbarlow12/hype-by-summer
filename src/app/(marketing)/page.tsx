@@ -4,14 +4,15 @@ import { Badge, Card, LinkButton, buttonClass } from "@/components/ui";
 import { LeadMagnetForm } from "@/components/lead-magnet-form";
 import { ContactForm } from "@/components/marketing/contact-form";
 import { CheckIcon, GuideCover, LOCATION_LABELS, Section, Stars } from "@/components/marketing/sections";
+import { notFound } from "next/navigation";
 import { BRAND_NAME, SITE_URL } from "@/lib/env";
+import { PLATFORM_NAME } from "@/lib/platform";
 import { formatDuration, formatMoney } from "@/lib/format";
-import { coachName, consultHref, getApprovedTestimonials, getSiteContext, placeholderTrainer } from "@/lib/marketing";
+import { coachName, consultHref, getApprovedTestimonials, getSiteContext } from "@/lib/marketing";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const site = await getSiteContext();
-  const { magnets } = site;
-  const trainer = site.trainer ?? placeholderTrainer();
+  const { magnets, trainer } = await getSiteContext();
+  if (!trainer) return { title: PLATFORM_NAME };
   const description =
     trainer.bio?.slice(0, 160) ??
     `Personal training and online coaching with ${coachName(trainer).full}. Book a free consult today.`;
@@ -30,14 +31,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const site = await getSiteContext();
-  const { magnets, types } = site;
-  // Before the coach finishes setup, render the full page with default copy.
-  const trainer = site.trainer ?? placeholderTrainer();
+  const { magnets, types, trainer } = await getSiteContext();
+  if (!trainer) notFound();
 
-  const testimonials = site.trainer ? await getApprovedTestimonials(trainer.trainer_id) : [];
+  const testimonials = await getApprovedTestimonials(trainer.trainer_id);
   const { full: name, first } = coachName(trainer);
-  const consult = site.trainer ? consultHref(trainer, types) : "/book";
+  const consult = consultHref(trainer, types);
   const consultType = types.find((t) => t.is_consultation);
   const services = types.filter((t) => !t.is_consultation);
   const magnet = magnets[0];

@@ -2,7 +2,6 @@ import "server-only";
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPrimaryTrainer, type PublicTrainer } from "@/lib/trainer";
-import { BRAND_NAME, PRIMARY_TRAINER_SLUG } from "@/lib/env";
 import type { Tables } from "@/lib/supabase/database.types";
 
 // OWNER: leads. Public (anonymous) reads for the marketing site. Uses the
@@ -99,33 +98,3 @@ export function coachName(trainer: PublicTrainer): { full: string; first: string
   return { full, first: full.split(/\s+/)[0] ?? full };
 }
 
-/**
- * Stand-in storefront so the homepage renders fully before the coach has
- * finished setup (the page's own default copy fills headline/bio).
- */
-export function placeholderTrainer(): PublicTrainer {
-  const now = new Date(0).toISOString();
-  return {
-    trainer_id: "",
-    slug: PRIMARY_TRAINER_SLUG,
-    business_name: BRAND_NAME,
-    headline: null,
-    bio: null,
-    specialties: [],
-    certifications: [],
-    instagram_handle: null,
-    website_url: null,
-    brand_color: "#e11d48",
-    cover_image_url: null,
-    default_location: null,
-    cancellation_window_hours: 24,
-    late_cancel_fee_cents: 0,
-    no_show_fee_cents: 0,
-    refund_on_cancel: true,
-    reminder_hours: [24, 2],
-    accepting_new_clients: true,
-    created_at: now,
-    updated_at: now,
-    profiles: { full_name: null, avatar_url: null, timezone: "America/Denver", email: "" },
-  };
-}

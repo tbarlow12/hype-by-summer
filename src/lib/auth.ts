@@ -3,6 +3,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getTenant } from "@/lib/tenant";
 import type { Tables } from "@/lib/supabase/database.types";
 
 export type Profile = Tables<"profiles">;
@@ -14,28 +15,31 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
   const userId = claims?.claims?.sub;
   if (!userId) return null;
   const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
-  if (data && data.role === "client" && isOwnerEmail(data.email)) return promoteToTrainer(data);
+  if (data && data.role !== "admin" && isPlatformAdminEmail(data.email)) return promote(data, "admin");
   return data;
 });
 
-/** OWNER_EMAIL (comma-separated for multiple coaches) gets the trainer role. */
-export function isOwnerEmail(email: string | null | undefined): boolean {
-  const owners = (process.env.OWNER_EMAIL ?? "")
+/**
+ * PLATFORM_ADMIN_EMAILS (comma-separated) run the platform: they get the admin
+ * role on sign-in. Trainers get their role by signing up at /start.
+ */
+export function isPlatformAdminEmail(email: string | null | undefined): boolean {
+  const admins = (process.env.PLATFORM_ADMIN_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
-  return Boolean(email) && owners.includes(email!.toLowerCase());
+  return Boolean(email) && admins.includes(email!.toLowerCase());
 }
 
-async function promoteToTrainer(profile: Profile): Promise<Profile> {
+async function promote(profile: Profile, role: "admin" | "trainer"): Promise<Profile> {
   const { data, error } = await createAdminClient()
     .from("profiles")
-    .update({ role: "trainer" })
+    .update({ role })
     .eq("id", profile.id)
     .select("*")
     .single();
   if (error || !data) {
-    console.error("[auth] owner promotion failed", error);
+    console.error("[auth] role promotion failed", error);
     return profile;
   }
   return data;
@@ -65,11 +69,22 @@ export function homeFor(profile: Pick<Profile, "role">): string {
 }
 
 /**
- * The trainer a client works with (first active relationship). Most clients
- * have exactly one; the business is built around a single primary trainer.
+ * The trainer a client works with on this site: the current tenant when the
+ * client belongs to it, else their first active relationship.
  */
 export const getClientTrainerId = cache(async (clientId: string): Promise<string | null> => {
+  const tenant = await getTenant();
   const supabase = await createClient();
+  if (tenant) {
+    const { data: link } = await supabase
+      .from("trainer_clients")
+      .select("trainer_id")
+      .eq("client_id", clientId)
+      .eq("trainer_id", tenant.trainer_id)
+      .neq("status", "archived")
+      .maybeSingle();
+    if (link) return link.trainer_id;
+  }
   const { data } = await supabase
     .from("trainer_clients")
     .select("trainer_id")

@@ -1,32 +1,14 @@
 import "server-only";
-import { cache } from "react";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { PRIMARY_TRAINER_SLUG } from "@/lib/env";
-import type { Tables } from "@/lib/supabase/database.types";
+import { getTenant, getTenantBySlug, type Tenant } from "@/lib/tenant";
 
-export type TrainerProfile = Tables<"trainer_profiles">;
+// Compatibility layer: storefront lookups are scoped to the current request's
+// tenant (see lib/tenant.ts). A slug that isn't this host's tenant resolves to
+// null, so one trainer's domain never serves another trainer's pages.
 
-/** Public storefront for a trainer slug (service role; returns public fields + timezone). */
-export const getTrainerBySlug = cache(async (slug: string) => {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("trainer_profiles")
-    .select("*, profiles!trainer_profiles_trainer_id_fkey(full_name, avatar_url, timezone, email)")
-    .eq("slug", slug)
-    .maybeSingle();
-  if (!data) return null;
-  const { calendar_feed_token: _secret, ...rest } = data;
-  void _secret;
-  return rest;
-});
+export type PublicTrainer = Tenant;
+export type TrainerProfile = Tenant;
 
-/** The business owner whose storefront the homepage shows. Falls back to the first trainer. */
-export const getPrimaryTrainer = cache(async () => {
-  const bySlug = await getTrainerBySlug(PRIMARY_TRAINER_SLUG);
-  if (bySlug) return bySlug;
-  const admin = createAdminClient();
-  const { data } = await admin.from("trainer_profiles").select("slug").order("created_at").limit(1).maybeSingle();
-  return data ? getTrainerBySlug(data.slug) : null;
-});
+export const getTrainerBySlug = (slug: string) => getTenantBySlug(slug);
 
-export type PublicTrainer = NonNullable<Awaited<ReturnType<typeof getTrainerBySlug>>>;
+/** The tenant whose site this request is for. */
+export const getPrimaryTrainer = () => getTenant();
