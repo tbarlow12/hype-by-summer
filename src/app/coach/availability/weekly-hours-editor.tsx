@@ -14,10 +14,12 @@ let counter = 0;
 const nextKey = () => `r${++counter}`;
 
 export function WeeklyHoursEditor({
+  coachId,
   initial,
   sessionTypes,
   action,
 }: {
+  coachId: string;
   initial: Omit<RangeValue, "key">[];
   sessionTypes: { id: string; name: string }[];
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
@@ -46,6 +48,7 @@ export function WeeklyHoursEditor({
 
   return (
     <ActionForm action={action} className="flex flex-col gap-4">
+      <input type="hidden" name="coach_id" value={coachId} />
       <input type="hidden" name="rules" value={payload} />
       <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
         {ORDER.map((weekday) => {
