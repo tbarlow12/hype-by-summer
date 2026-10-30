@@ -127,7 +127,7 @@ export function BookForClientForm({
       <Field label="Notes (visible to the client)" htmlFor="notes">
         <Textarea id="notes" name="notes" maxLength={2000} />
       </Field>
-      <p className="text-xs text-zinc-500">Bookings skip the coach's availability hours but never double-book the coach or overlap time off. Conflicting weeks are skipped and listed.</p>
+      <p className="text-xs text-zinc-500">Bookings skip the coach&apos;s availability hours but never double-book the coach or overlap time off. Conflicting weeks are skipped and listed.</p>
       <div>
         <SubmitButton pendingLabel="Booking…">{weeks > 1 ? `Book ${weeks} sessions` : "Book session"}</SubmitButton>
       </div>

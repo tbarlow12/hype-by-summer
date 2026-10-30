@@ -51,7 +51,6 @@ export default async function AvailabilityPage({ searchParams }: PageProps<"/coa
       .order("starts_at"),
     supabase.from("session_types").select("id, name").eq("business_id", business.id).contains("coach_ids", [coach.id]).order("sort_order"),
   ]);
-  const today = localDateOf(new Date(), tz);
 
   const describe = (o: { starts_at: string; ends_at: string }, zone: string) => {
     const startDay = formatDateTime(o.starts_at, zone, "EEE, MMM d");
