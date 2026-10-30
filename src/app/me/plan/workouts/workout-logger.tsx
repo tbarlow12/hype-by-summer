@@ -91,7 +91,7 @@ function RatingChips({
               onChange={() => onChange(n)}
               onClick={() => value === n && onChange(null)}
             />
-            <span className="inline-flex min-w-10 items-center justify-center rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40 dark:border-zinc-700 dark:text-zinc-400">
+            <span className="inline-flex min-w-10 items-center justify-center rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40 dark:border-zinc-700 dark:text-zinc-400">
               {labels ? labels[n] : n}
             </span>
           </label>

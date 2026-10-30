@@ -32,7 +32,7 @@ export function NavLinks({ items }: { items: NavItem[] }) {
             >
               {item.label}
               {item.count ? (
-                <span className="rounded-full bg-brand px-1.5 text-[11px] font-bold text-white">{item.count}</span>
+                <span className="rounded-full bg-brand px-1.5 text-[11px] font-bold text-on-brand">{item.count}</span>
               ) : null}
             </Link>
           </div>

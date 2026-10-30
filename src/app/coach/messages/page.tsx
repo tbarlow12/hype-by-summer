@@ -117,7 +117,7 @@ export default async function CoachMessagesPage({ searchParams }: PageProps<"/co
                           {preview}
                         </p>
                         {unread ? (
-                          <span className="ml-auto inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-bold text-white">
+                          <span className="ml-auto inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-bold text-on-brand">
                             <span className="sr-only">Unread messages: </span>
                             {r.unread_count}
                           </span>

@@ -15,7 +15,11 @@ export const serverEnv = {
   stripeWebhookSecret: () => required("STRIPE_WEBHOOK_SECRET"),
   stripeAutomaticTax: () => process.env.STRIPE_AUTOMATIC_TAX === "true",
   resendApiKey: () => process.env.RESEND_API_KEY || null,
-  emailFrom: () => process.env.EMAIL_FROM ?? "HYPE by Summer <hello@example.com>",
+  /** Verified sending address; each email's display name is the business's. */
+  emailFromAddress: () => {
+    const raw = process.env.EMAIL_FROM_ADDRESS ?? process.env.EMAIL_FROM ?? "notifications@example.com";
+    return raw.match(/<([^>]+)>/)?.[1] ?? raw.trim();
+  },
   videoProvider: () => (process.env.VIDEO_PROVIDER === "daily" ? "daily" : "jitsi") as "daily" | "jitsi",
   dailyApiKey: () => process.env.DAILY_API_KEY || null,
   cronSecret: () => required("CRON_SECRET"),

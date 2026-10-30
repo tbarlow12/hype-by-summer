@@ -6,8 +6,17 @@
   color-scheme: light dark;
   --background: #fafafa;
   --foreground: #18181b;
+  /* Brand tokens are set per business on <html> (see app/layout.tsx); these
+     are the platform defaults. */
   --brand: #e11d48;
   --brand-dark: #be123c;
+  --on-brand: #ffffff;
+  --brand-text-light: #be123c;
+  --brand-text-dark: #fb7185;
+  --brand-text: var(--brand-text-light);
+  /* Font preset (business setting): body + display faces. */
+  --preset-sans: var(--font-barlow);
+  --preset-display: var(--font-barlow-condensed);
   /* Light mode: zinc-400 is used for small secondary text but is too faint on
      white; render it as zinc-500. Dark mode restores both below. */
   --color-zinc-400: oklch(55.2% 0.016 285.938);
@@ -20,16 +29,22 @@
     /* Secondary text (zinc-500) is too faint on dark cards; lift it to zinc-400. */
     --color-zinc-400: oklch(70.5% 0.015 286.067);
     --color-zinc-500: oklch(70.5% 0.015 286.067);
+    --brand-text: var(--brand-text-dark);
   }
 }
+
+html.font-preset-modern { --preset-sans: var(--font-manrope); --preset-display: var(--font-sora); }
+html.font-preset-classic { --preset-sans: var(--font-source-sans); --preset-display: var(--font-fraunces); }
+html.font-preset-rounded { --preset-sans: var(--font-nunito); --preset-display: var(--font-nunito); }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-brand: var(--brand);
   --color-brand-dark: var(--brand-dark);
-  --font-sans: var(--font-barlow);
-  --font-display: var(--font-barlow-condensed);
+  --color-on-brand: var(--on-brand);
+  --font-sans: var(--preset-sans);
+  --font-display: var(--preset-display);
 }
 
 body {
@@ -37,32 +52,26 @@ body {
   color: var(--foreground);
 }
 
-/* Peloton-style display type: heavy, condensed, uppercase headings. */
 h1,
 h2,
 h3 {
   font-family: var(--font-display);
   font-weight: 800;
+  line-height: 1.1;
+}
+/* The "athletic" preset: heavy, condensed, uppercase headings. */
+html.font-preset-athletic :is(h1, h2) {
+  text-transform: uppercase;
   letter-spacing: 0.01em;
   line-height: 1.05;
 }
-h1,
-h2 {
-  text-transform: uppercase;
-}
 
-/* Brand red stays #e11d48 for buttons (white text passes contrast). Red *text*
-   is a shade deeper on light backgrounds and lighter on near-black so it stays
-   legible on tinted chips. Unlayered, so it beats the utility. */
+/* Brand-colored text uses a shade of the brand that passes contrast on the
+   current page background (computed per business). Unlayered, so it beats
+   the utility. */
 .text-brand,
 .hover\:text-brand:hover {
-  color: #be123c;
-}
-@media (prefers-color-scheme: dark) {
-  .text-brand,
-  .hover\:text-brand:hover {
-    color: #fb7185;
-  }
+  color: var(--brand-text);
 }
 
 /* Heavy weights (stats, logo, big numbers) use the condensed display face too. */

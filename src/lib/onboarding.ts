@@ -1,37 +1,39 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTenant } from "@/lib/tenant";
-import type { Profile } from "@/lib/auth";
+import type { Tables } from "@/lib/supabase/database.types";
 
 /**
- * Make sure a signed-in client is attached to the trainer whose site they're
- * on (or `trainerId`), and that any matching lead is marked converted.
- * Idempotent. A person can be a client of several trainers' businesses.
+ * Make a signed-in person a client of a business (idempotent): creates the
+ * relationship and chat thread, links guest bookings made with their email,
+ * and marks a matching lead converted.
  */
-export async function ensureClientLinked(profile: Profile, trainerId?: string): Promise<string | null> {
-  if (profile.role !== "client") return null;
+export async function ensureClientLinked(profile: Tables<"profiles">, businessId: string): Promise<void> {
   const admin = createAdminClient();
-
-  const target = trainerId ?? (await getTenant())?.trainer_id;
-  if (!target) return null;
-
   const { data: existing } = await admin
-    .from("trainer_clients")
+    .from("business_clients")
     .select("status")
-    .eq("trainer_id", target)
+    .eq("business_id", businessId)
     .eq("client_id", profile.id)
     .maybeSingle();
-  if (existing) return target;
+  if (existing) return;
 
   await admin
-    .from("trainer_clients")
-    .upsert({ trainer_id: target, client_id: profile.id, status: "active" }, { onConflict: "trainer_id,client_id", ignoreDuplicates: true });
-  await admin.rpc("ensure_conversation", { p_trainer: target, p_client: profile.id });
+    .from("business_clients")
+    .upsert({ business_id: businessId, client_id: profile.id, status: "active" }, { onConflict: "business_id,client_id", ignoreDuplicates: true });
+  await admin.rpc("ensure_conversation", { p_business: businessId, p_client: profile.id });
+
+  // Bookings they made as a guest at this business become theirs.
+  await admin
+    .from("bookings")
+    .update({ client_id: profile.id })
+    .eq("business_id", businessId)
+    .is("client_id", null)
+    .eq("guest_email", profile.email);
 
   const { data: lead } = await admin
     .from("leads")
     .select("id, status")
-    .eq("trainer_id", target)
+    .eq("business_id", businessId)
     .eq("email", profile.email)
     .maybeSingle();
   if (lead && lead.status !== "converted") {
@@ -41,5 +43,4 @@ export async function ensureClientLinked(profile: Profile, trainerId?: string): 
       .eq("id", lead.id);
     await admin.from("lead_events").insert({ lead_id: lead.id, type: "converted", detail: { client_id: profile.id } });
   }
-  return target;
 }

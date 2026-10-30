@@ -236,7 +236,7 @@ export default async function BillingPage({ searchParams }: PageProps<"/me/billi
                         {o.digital_file_name ?? "File"} · bought {formatDate(p.paid_at ?? p.created_at, tz)}
                       </p>
                     </div>
-                    <a href={`/api/downloads/${p.id}`} className="shrink-0 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark">
+                    <a href={`/api/downloads/${p.id}`} className="shrink-0 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-brand hover:bg-brand-dark">
                       Download
                     </a>
                   </Card>

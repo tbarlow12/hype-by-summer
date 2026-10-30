@@ -166,7 +166,7 @@ export function SlotPicker({
                 className={cn(
                   "aspect-square rounded-full text-sm font-medium transition-colors",
                   date === activeDate
-                    ? "bg-brand text-white"
+                    ? "bg-brand text-on-brand"
                     : byDate.has(date)
                       ? "bg-brand/10 text-brand hover:bg-brand/20"
                       : "text-zinc-300 dark:text-zinc-700",
@@ -224,7 +224,7 @@ export function SlotPicker({
                     className={cn(
                       "flex h-11 w-full items-center justify-between rounded-xl border px-4 text-sm font-semibold transition-colors",
                       isSelected
-                        ? "border-brand bg-brand text-white"
+                        ? "border-brand bg-brand text-on-brand"
                         : full
                           ? "border-zinc-200 text-zinc-500 hover:border-zinc-400 dark:border-zinc-800"
                           : "border-brand/40 text-brand hover:border-brand hover:bg-brand/5",

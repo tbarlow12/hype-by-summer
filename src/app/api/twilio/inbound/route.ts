@@ -1,6 +1,5 @@
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { BRAND_NAME } from "@/lib/env";
 import { classifyInbound, toE164 } from "@/lib/sms-utils";
 import { twiml, verifiedTwilioParams } from "@/lib/twilio-webhook";
 import { notify } from "@/lib/notify";
@@ -27,13 +26,29 @@ export async function POST(req: NextRequest) {
     return twiml();
   }
   if (kind === "help") {
-    return twiml(`${BRAND_NAME}: session reminders. Reply STOP to opt out. Questions? Message your coach in the app.`);
+    // One number serves every business, so HELP stays brand-neutral.
+    return twiml("Session reminders from your trainer. Reply STOP to opt out. Questions? Message your coach in the app.");
   }
 
   // Anything else: forward to the trainer so replies aren't lost.
-  const { data: trainers } = await admin.from("profiles").select("id").in("role", ["trainer", "admin"]);
-  for (const t of trainers ?? []) {
-    await notify({ userId: t.id, type: "sms_reply", title: `Text from ${from}`, body: params.Body?.slice(0, 500) });
+  // Route the reply to the business that last texted this number.
+  const { data: last } = await admin
+    .from("sms_messages")
+    .select("business_id")
+    .eq("to_phone", from)
+    .not("business_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!last?.business_id) return twiml();
+  const { data: managers } = await admin
+    .from("business_members")
+    .select("user_id")
+    .eq("business_id", last.business_id)
+    .eq("active", true)
+    .in("role", ["owner", "admin"]);
+  for (const m of managers ?? []) {
+    await notify({ userId: m.user_id, businessId: last.business_id, type: "sms_reply", title: `Text from ${from}`, body: params.Body?.slice(0, 500) });
   }
   return twiml();
 }

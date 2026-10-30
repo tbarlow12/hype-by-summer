@@ -131,7 +131,7 @@ export default async function PricingPage({ searchParams }: PageProps<"/pricing"
                     )}
                   >
                     {o.featured ? (
-                      <Badge tone="brand" className="absolute -top-3 left-6 bg-brand text-white">
+                      <Badge tone="brand" className="absolute -top-3 left-6 bg-brand text-on-brand">
                         Most popular
                       </Badge>
                     ) : null}

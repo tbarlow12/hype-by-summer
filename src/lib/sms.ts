@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { absoluteUrl, BRAND_NAME } from "@/lib/env";
+import { platformUrl } from "@/lib/platform";
+import type { Brand } from "@/lib/tenant";
 import { toE164, withOptOut } from "@/lib/sms-utils";
 
 export type SmsKind = "reminder" | "confirmation" | "cancellation" | "other";
@@ -25,6 +26,8 @@ export const isSmsConfigured = () => twilioConfig() !== null;
  * to the console (local dev).
  */
 export async function sendSms(input: {
+  /** The business texting (its name prefixes every message). */
+  brand: Pick<Brand, "name" | "businessId">;
   to: string | null | undefined;
   body: string;
   kind: SmsKind;
@@ -34,14 +37,14 @@ export async function sendSms(input: {
   const to = toE164(input.to);
   if (!to) return { ok: false, skipped: "invalid_phone" };
   const admin = createAdminClient();
-  const body = withOptOut(input.body, BRAND_NAME);
+  const body = withOptOut(input.body, input.brand.name);
 
   const { data: optOut } = await admin.from("sms_opt_outs").select("phone").eq("phone", to).maybeSingle();
   if (optOut) return { ok: false, skipped: "opted_out" };
 
   const { data: log } = await admin
     .from("sms_messages")
-    .insert({ to_phone: to, body, kind: input.kind, profile_id: input.profileId ?? null, booking_id: input.bookingId ?? null })
+    .insert({ business_id: input.brand.businessId, to_phone: to, body, kind: input.kind, profile_id: input.profileId ?? null, booking_id: input.bookingId ?? null })
     .select("id")
     .single();
 
@@ -53,7 +56,7 @@ export async function sendSms(input: {
   }
 
   try {
-    const form = new URLSearchParams({ To: to, Body: body, StatusCallback: absoluteUrl("/api/twilio/status") });
+    const form = new URLSearchParams({ To: to, Body: body, StatusCallback: platformUrl("/api/twilio/status") });
     if (cfg.messagingServiceSid) form.set("MessagingServiceSid", cfg.messagingServiceSid);
     else form.set("From", cfg.from!);
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${cfg.sid}/Messages.json`, {

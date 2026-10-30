@@ -398,7 +398,7 @@ export default async function HomePage() {
 
       {/* Final CTA */}
       <section className="px-4 sm:px-6">
-        <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-brand px-6 py-14 text-center text-white sm:px-12 sm:py-20">
+        <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-brand px-6 py-14 text-center text-on-brand sm:px-12 sm:py-20">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.25),transparent_45%)]" aria-hidden="true" />
           <h2 className="relative text-4xl font-black tracking-tight text-balance sm:text-6xl">Your strongest era starts now.</h2>
           <p className="relative mx-auto mt-4 max-w-xl text-lg text-white">

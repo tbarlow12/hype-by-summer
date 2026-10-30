@@ -74,7 +74,7 @@ export default async function CheckInPage() {
                 {RATING_HINTS[name].map((hint, i) => (
                   <label key={hint} className="cursor-pointer">
                     <input type="radio" name={name} value={i + 1} defaultChecked={current?.[name] === i + 1} className="peer sr-only" />
-                    <span className="flex h-full flex-col items-center rounded-xl border border-zinc-300 px-2 py-1.5 text-center text-xs text-zinc-600 peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40 sm:min-w-20 dark:border-zinc-700 dark:text-zinc-400">
+                    <span className="flex h-full flex-col items-center rounded-xl border border-zinc-300 px-2 py-1.5 text-center text-xs text-zinc-600 peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40 sm:min-w-20 dark:border-zinc-700 dark:text-zinc-400">
                       <span className="text-sm font-bold">{i + 1}</span>
                       <span className="leading-tight">{hint}</span>
                     </span>

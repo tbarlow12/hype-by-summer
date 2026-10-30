@@ -14,7 +14,7 @@ export default async function MarketingLayout({ children }: { children: ReactNod
 
   return (
     <div className="flex min-h-screen flex-1 flex-col bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-brand focus:px-4 focus:py-2 focus:text-white">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-brand focus:px-4 focus:py-2 focus:text-on-brand">
         Skip to content
       </a>
       <SiteHeader nav={{ bookHref, guideHref, account }} />

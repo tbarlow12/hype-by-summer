@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { absoluteUrl } from "@/lib/env";
+import { siteUrl } from "@/lib/tenant";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
 
 const safeNext = (next: unknown) =>
@@ -26,7 +26,7 @@ export async function login(_: ActionState, formData: FormData): Promise<ActionS
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: absoluteUrl(`/auth/callback?next=${encodeURIComponent(safeNext(next))}`),
+        emailRedirectTo: await siteUrl(`/auth/callback?next=${encodeURIComponent(safeNext(next))}`),
         shouldCreateUser: true,
       },
     });
@@ -57,7 +57,7 @@ export async function signup(_: ActionState, formData: FormData): Promise<Action
     password,
     options: {
       data: { full_name, phone },
-      emailRedirectTo: absoluteUrl(`/auth/callback?next=${encodeURIComponent(safeNext(next))}`),
+      emailRedirectTo: await siteUrl(`/auth/callback?next=${encodeURIComponent(safeNext(next))}`),
     },
   });
   if (error) return fail(error.message);

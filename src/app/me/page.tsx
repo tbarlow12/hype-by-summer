@@ -263,7 +263,7 @@ export default async function ClientHome() {
               ) : null}
               <div className="flex flex-wrap gap-2">
                 {next.location_type === "virtual" && next.video_room_url ? (
-                  <a href={next.video_room_url} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center rounded-full bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-dark">
+                  <a href={next.video_room_url} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center rounded-full bg-brand px-4 text-sm font-semibold text-on-brand hover:bg-brand-dark">
                     Join video call
                   </a>
                 ) : null}

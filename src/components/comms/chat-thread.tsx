@@ -646,7 +646,7 @@ function Bubble({
   const canEdit = canManage && m.kind !== "workout_share";
   const bubble = cn(
     "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm sm:max-w-[70%]",
-    mine ? "rounded-br-md bg-brand text-white" : "rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100",
+    mine ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100",
     deleted && "bg-transparent! text-zinc-400! italic ring-1 ring-zinc-200 dark:ring-zinc-700",
     m.status === "failed" && "opacity-70",
   );

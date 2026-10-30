@@ -1,6 +1,6 @@
 import "server-only";
 import type { NextRequest } from "next/server";
-import { absoluteUrl } from "@/lib/env";
+import { platformUrl } from "@/lib/platform";
 import { isValidTwilioSignature } from "@/lib/sms-utils";
 import { twilioConfig } from "@/lib/sms";
 
@@ -9,8 +9,8 @@ export async function verifiedTwilioParams(req: NextRequest, path: string): Prom
   const cfg = twilioConfig();
   if (!cfg) return null;
   const params = Object.fromEntries(new URLSearchParams(await req.text())) as Record<string, string>;
-  // Twilio signs the public URL it called; behind proxies that's our configured site URL.
-  const url = absoluteUrl(path + req.nextUrl.search);
+  // Twilio signs the URL it called: the platform host (one shared number for all businesses).
+  const url = platformUrl(path + req.nextUrl.search);
   return isValidTwilioSignature(cfg.token, req.headers.get("x-twilio-signature"), url, params) ? params : null;
 }
 

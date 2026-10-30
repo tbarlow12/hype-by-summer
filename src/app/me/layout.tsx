@@ -1,21 +1,19 @@
 import { AppShell } from "@/components/shell/app-shell";
 import type { NavItem } from "@/components/shell/nav-links";
 import { requireClient } from "@/lib/auth";
-import { ensureClientLinked } from "@/lib/onboarding";
 import { createClient } from "@/lib/supabase/server";
 import { displayName } from "@/lib/format";
 
 export default async function ClientLayout({ children }: LayoutProps<"/me">) {
-  const profile = await requireClient();
-  await ensureClientLinked(profile);
+  const { profile, business } = await requireClient();
   const supabase = await createClient();
-  const { data: convos } = await supabase
+  const { data: convo } = await supabase
     .from("conversations")
     .select("last_message_at, client_last_read_at")
-    .eq("client_id", profile.id);
-  const unread = (convos ?? []).filter(
-    (c) => c.last_message_at && (!c.client_last_read_at || c.last_message_at > c.client_last_read_at),
-  ).length;
+    .eq("business_id", business.id)
+    .eq("client_id", profile.id)
+    .maybeSingle();
+  const unread = convo?.last_message_at && (!convo.client_last_read_at || convo.last_message_at > convo.client_last_read_at) ? 1 : 0;
 
   const nav: NavItem[] = [
     { href: "/me", label: "Home" },
@@ -31,7 +29,12 @@ export default async function ClientLayout({ children }: LayoutProps<"/me">) {
   ];
 
   return (
-    <AppShell nav={nav} user={{ name: displayName(profile), avatarUrl: profile.avatar_url, subtitle: profile.email }}>
+    <AppShell
+      brandName={business.name}
+      logoUrl={business.logo_url}
+      nav={nav}
+      user={{ name: displayName(profile), avatarUrl: profile.avatar_url, subtitle: profile.email }}
+    >
       {children}
     </AppShell>
   );

@@ -278,7 +278,7 @@ function StatusPill({ href, active, label, count, tone }: { href: string; active
       className={cn(
         "flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
         active
-          ? "border-brand bg-brand text-white"
+          ? "border-brand bg-brand text-on-brand"
           : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300",
       )}
     >

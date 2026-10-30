@@ -28,7 +28,7 @@ function TestimonialCard({ t, timeZone }: { t: Tables<"testimonials">; timeZone:
         <form action={setTestimonialApproved}>
           <input type="hidden" name="id" value={t.id} />
           <input type="hidden" name="approved" value={t.approved ? "false" : "true"} />
-          <button className={t.approved ? "h-8 rounded-full px-3 text-sm font-semibold text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800" : "h-8 rounded-full bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-dark"}>
+          <button className={t.approved ? "h-8 rounded-full px-3 text-sm font-semibold text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800" : "h-8 rounded-full bg-brand px-3 text-sm font-semibold text-on-brand hover:bg-brand-dark"}>
             {t.approved ? "Hide" : "Approve"}
           </button>
         </form>

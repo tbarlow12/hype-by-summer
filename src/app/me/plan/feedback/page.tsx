@@ -18,7 +18,7 @@ function Choice({ name, options, legend }: { name: string; options: [string, str
         {options.map(([value, label]) => (
           <label key={value} className="cursor-pointer">
             <input type="radio" name={name} value={value} required className="peer sr-only" />
-            <span className="inline-flex items-center rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40 dark:border-zinc-700 dark:text-zinc-400">
+            <span className="inline-flex items-center rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 peer-checked:border-brand peer-checked:bg-brand peer-checked:text-on-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40 dark:border-zinc-700 dark:text-zinc-400">
               {label}
             </span>
           </label>

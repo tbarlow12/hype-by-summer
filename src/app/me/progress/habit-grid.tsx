@@ -78,7 +78,7 @@ export function HabitGrid({ habits, days, today }: { habits: HabitGridItem[]; da
                           aria-label={`${h.name} on ${shortDayLabel(d)}`}
                           className={cn(
                             "inline-flex size-8 items-center justify-center rounded-full border text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-30",
-                            checked ? "border-brand bg-brand text-white" : "border-zinc-300 text-transparent hover:border-brand dark:border-zinc-700",
+                            checked ? "border-brand bg-brand text-on-brand" : "border-zinc-300 text-transparent hover:border-brand dark:border-zinc-700",
                           )}
                         >
                           ✓

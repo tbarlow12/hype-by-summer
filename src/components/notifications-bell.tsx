@@ -123,7 +123,7 @@ export function NotificationsBell() {
           <path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 003.4 0" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         {unread ? (
-          <span className="absolute -top-0.5 -right-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-brand px-1 text-[10px] leading-[18px] font-bold text-white">
+          <span className="absolute -top-0.5 -right-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-brand px-1 text-[10px] leading-[18px] font-bold text-on-brand">
             {unread > 99 ? "99+" : unread}
           </span>
         ) : null}

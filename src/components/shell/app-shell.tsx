@@ -2,15 +2,19 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui";
 import { NotificationsBell } from "@/components/notifications-bell";
-import { BRAND_NAME } from "@/lib/env";
 import { NavLinks, type NavItem } from "./nav-links";
 
 export function AppShell({
+  brandName,
+  logoUrl,
   nav,
   user,
   badge,
   children,
 }: {
+  /** The business's name (white-label: never the platform's). */
+  brandName: string;
+  logoUrl?: string | null;
   nav: NavItem[];
   user: { name: string; avatarUrl?: string | null; subtitle?: string };
   badge?: ReactNode;
@@ -22,7 +26,12 @@ export function AppShell({
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between px-5 py-4">
             <Link href="/" className="text-lg font-extrabold tracking-tight text-brand">
-              {BRAND_NAME}
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt={brandName} className="h-8 w-auto max-w-[160px] object-contain" />
+              ) : (
+                brandName
+              )}
             </Link>
             <div className="flex items-center gap-1">
               {badge}

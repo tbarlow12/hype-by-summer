@@ -389,7 +389,7 @@ export default async function CoachDashboard() {
                         href={b.video_room_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="shrink-0 rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white hover:bg-brand-dark"
+                        className="shrink-0 rounded-full bg-brand px-3 py-1 text-xs font-semibold text-on-brand hover:bg-brand-dark"
                       >
                         Join
                       </a>
