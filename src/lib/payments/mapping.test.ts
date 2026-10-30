@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import type Stripe from "stripe";
 import {
   bookingFeeCents,
+  businessUpdateFromAccount,
+  connectStatus,
+  netPlatformFeeCents,
+  platformFeeRow,
   checkoutExpiresAt,
   checkoutKind,
   creditGrantFor,
@@ -226,7 +230,7 @@ describe("revenue", () => {
     expect(netRevenueCents({ amount_cents: 5000, amount_refunded_cents: 5000, status: "refunded" })).toBe(0);
     expect(netRevenueCents({ amount_cents: 5000, amount_refunded_cents: 0, status: "failed" })).toBe(0);
   });
-  it("lists months in the trainer's timezone", () => {
+  it("lists months in the business's timezone", () => {
     expect(lastMonths(new Date("2026-01-01T03:00:00Z"), "America/Denver", 3)).toEqual(["2025-10", "2025-11", "2025-12"]);
     expect(lastMonths(now, "UTC", 2)).toEqual(["2026-09", "2026-10"]);
   });
@@ -255,5 +259,38 @@ describe("fees", () => {
     expect(feeFailureMessage({ code: "authentication_required" })).toMatch(/authenticate/);
     expect(feeFailureMessage({ code: "card_declined", decline_code: "insufficient_funds" })).toMatch(/insufficient/);
     expect(feeFailureMessage({ code: "weird", message: "Nope" })).toBe("Nope");
+  });
+});
+
+describe("connect", () => {
+  it("mirrors account capabilities onto the business", () => {
+    expect(businessUpdateFromAccount({ charges_enabled: true, payouts_enabled: false, details_submitted: true })).toEqual({
+      stripe_charges_enabled: true,
+      stripe_payouts_enabled: false,
+      stripe_details_submitted: true,
+    });
+  });
+  it("derives the onboarding status", () => {
+    const base = { stripe_account_id: "acct_1", stripe_charges_enabled: false, stripe_payouts_enabled: false, stripe_details_submitted: false };
+    expect(connectStatus({ ...base, stripe_account_id: null })).toBe("not_connected");
+    expect(connectStatus(base)).toBe("onboarding");
+    expect(connectStatus({ ...base, stripe_details_submitted: true, stripe_charges_enabled: true })).toBe("restricted");
+    expect(connectStatus({ ...base, stripe_details_submitted: true, stripe_charges_enabled: true, stripe_payouts_enabled: true })).toBe("active");
+  });
+  it("maps application fees to platform_fees rows", () => {
+    const fee = { id: "fee_1", account: "acct_1", amount: 300, amount_refunded: 120, currency: "usd", charge: "ch_1", created: nowS } as Stripe.ApplicationFee;
+    expect(platformFeeRow(fee, "biz-1")).toEqual({
+      id: "fee_1",
+      business_id: "biz-1",
+      stripe_account_id: "acct_1",
+      amount_cents: 300,
+      amount_refunded_cents: 120,
+      currency: "usd",
+      charge_id: "ch_1",
+      created_at: now.toISOString(),
+    });
+    expect(platformFeeRow({ ...fee, account: { id: "acct_2" } as Stripe.Account }, null).stripe_account_id).toBe("acct_2");
+    expect(netPlatformFeeCents(fee)).toBe(180);
+    expect(netPlatformFeeCents({ amount: 100, amount_refunded: 150 })).toBe(0);
   });
 });

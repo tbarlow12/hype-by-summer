@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getClientTrainerId, requireClient } from "@/lib/auth";
+import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, SubmitButton } from "@/components/form";
 import { Alert, Badge, Card, CardTitle, Checkbox, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
@@ -7,7 +7,6 @@ import { ImageUpload } from "@/components/clients/image-upload";
 import { TestimonialForm } from "@/components/testimonial-form";
 import { PasswordCard } from "@/components/account/password-card";
 import { formatDateTime } from "@/lib/format";
-import { BRAND_NAME } from "@/lib/env";
 import { EXPERIENCE_LEVELS, PARQ_QUESTIONS, PRIMARY_GOALS, parqFlags, readParqAnswers } from "@/lib/clients/intake";
 import { onboardingSteps, waiverCurrent } from "@/lib/clients/onboarding";
 import { WAIVER_TITLE, WAIVER_VERSION, waiverSections } from "@/lib/clients/waiver";
@@ -16,17 +15,14 @@ import { saveIntake, signWaiver, updateProfile } from "./actions";
 export const metadata: Metadata = { title: "Profile & intake" };
 
 export default async function ProfilePage() {
-  const profile = await requireClient();
-  const trainerId = await getClientTrainerId(profile.id);
+  const { profile, business } = await requireClient();
   const supabase = await createClient();
-  const [{ data: intake }, { data: storefront }] = await Promise.all([
-    trainerId
-      ? supabase.from("client_intakes").select("*").eq("client_id", profile.id).eq("trainer_id", trainerId).maybeSingle()
-      : Promise.resolve({ data: null }),
-    trainerId
-      ? supabase.from("trainer_profiles").select("business_name").eq("trainer_id", trainerId).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+  const { data: intake } = await supabase
+    .from("client_intakes")
+    .select("*")
+    .eq("client_id", profile.id)
+    .eq("business_id", business.id)
+    .maybeSingle();
 
   const answers = readParqAnswers(intake?.answers);
   const flags = parqFlags(answers);
@@ -34,7 +30,7 @@ export default async function ProfilePage() {
   const signed = waiverCurrent(intake);
   const outdatedSignature = !!intake?.waiver_accepted_at && !signed;
   const timezones = Intl.supportedValuesOf("timeZone");
-  const businessName = storefront?.business_name ?? BRAND_NAME;
+  const businessName = business.name;
 
   return (
     <div className="space-y-6">
@@ -62,7 +58,7 @@ export default async function ProfilePage() {
         <CardTitle>Your profile</CardTitle>
         <ActionForm action={updateProfile} className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <ImageUpload userId={profile.id} name="avatar_url" prefix="avatar" defaultUrl={profile.avatar_url} label="Photo" />
+            <ImageUpload folder={profile.id} name="avatar_url" prefix="avatar" defaultUrl={profile.avatar_url} label="Photo" />
           </div>
           <Field label="Full name" htmlFor="full_name">
             <Input id="full_name" name="full_name" defaultValue={profile.full_name ?? ""} required autoComplete="name" />
@@ -99,13 +95,8 @@ export default async function ProfilePage() {
       <Card id="intake" className="scroll-mt-6">
         <CardTitle>Health intake</CardTitle>
         <p className="mt-1 text-sm text-zinc-500">
-          Only you and your coach can see this. If anything changes (a new injury, medication or pregnancy), update it here.
+          Only you and the {businessName} coaching team can see this. If anything changes (a new injury, medication or pregnancy), update it here.
         </p>
-        {!trainerId ? (
-          <div className="mt-4">
-            <Alert tone="amber">You&apos;re not connected to a coach yet, so the intake can&apos;t be saved.</Alert>
-          </div>
-        ) : null}
         {flags.length ? (
           <div className="mt-4">
             <Alert tone="amber">
@@ -213,7 +204,7 @@ export default async function ProfilePage() {
           </div>
         </details>
 
-        {!signed && trainerId ? (
+        {!signed ? (
           <ActionForm action={signWaiver} className="mt-4 space-y-4">
             <input type="hidden" name="version" value={WAIVER_VERSION} />
             <Checkbox name="agree" required label="I have read and understand this waiver, and I agree to its terms." />
@@ -227,13 +218,11 @@ export default async function ProfilePage() {
 
       <PasswordCard />
 
-      {trainerId ? (
-        <Card>
-          <CardTitle>Leave a review</CardTitle>
-          <p className="mb-4 mt-1 text-sm text-zinc-500">Enjoying your training? A short review helps others find {businessName}.</p>
-          <TestimonialForm defaultName={profile.full_name} />
-        </Card>
-      ) : null}
+      <Card>
+        <CardTitle>Leave a review</CardTitle>
+        <p className="mb-4 mt-1 text-sm text-zinc-500">Enjoying your training? A short review helps others find {businessName}.</p>
+        <TestimonialForm defaultName={profile.full_name} />
+      </Card>
     </div>
   );
 }

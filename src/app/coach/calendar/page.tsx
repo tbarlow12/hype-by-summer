@@ -4,6 +4,7 @@ import { CopyButton } from "@/components/scheduling/copy-button";
 import { isManager, requireStaff } from "@/lib/auth";
 import { businessUrl } from "@/lib/tenant";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { displayName, formatDateTime } from "@/lib/format";
 import { listCoaches } from "@/lib/scheduling/availability";
 import { STATUS_LABELS, STATUS_TONES } from "@/lib/scheduling/labels";
@@ -58,7 +59,8 @@ export default async function CalendarPage({ searchParams }: PageProps<"/coach/c
     query.limit(1000),
     supabase.from("session_types").select("id, name, color, capacity").eq("business_id", business.id),
     listCoaches(business.id),
-    supabase.from("business_members").select("calendar_feed_token").eq("business_id", business.id).eq("user_id", profile.id).maybeSingle(),
+    // The feed token isn't readable through RLS; read only the caller's own.
+    createAdminClient().from("business_members").select("calendar_feed_token").eq("business_id", business.id).eq("user_id", profile.id).maybeSingle(),
   ]);
   const bookings = (bookingRows ?? []).filter((b) => b.cancel_reason !== "rescheduled" || showCancelled);
   const clientIds = [...new Set(bookings.map((b) => b.client_id).filter((x): x is string => Boolean(x)))];

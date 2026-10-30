@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { ensureClientLinked } from "@/lib/onboarding";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
-import { getBookableSessionType } from "@/lib/scheduling/availability";
+import { coachesForType, getBookableSessionType } from "@/lib/scheduling/availability";
 import { bookSlot, captureConsultLead, joinWaitlist, markConsultBooked } from "@/lib/scheduling/book";
 import { publicBookingContext } from "@/lib/scheduling/public";
 import { isValidTimeZone } from "@/lib/scheduling/tz";
@@ -57,7 +57,11 @@ export async function createBookingAction(_: ActionState, formData: FormData): P
 
   let leadId: string | null = null;
   if (!clientId && sessionType.is_consultation && guest) {
-    leadId = await captureConsultLead({ businessId: business.id, email: guest.email, name: guest.name, phone: guest.phone });
+    leadId = await captureConsultLead({
+      businessId: business.id,
+      // Only a coach who actually runs this session (bookSlot re-checks before booking).
+      coachId: input.coach !== "any" && coachesForType(sessionType, coaches).some((c) => c.id === input.coach) ? input.coach : null,
+      email: guest.email, name: guest.name, phone: guest.phone });
   }
 
   const result = await bookSlot({

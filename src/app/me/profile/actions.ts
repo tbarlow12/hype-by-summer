@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getClientTrainerId, requireClient, type Profile } from "@/lib/auth";
+import { requireClient, type Profile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
 import { EXPERIENCE_LEVELS, PARQ_QUESTIONS, PRIMARY_GOALS } from "@/lib/clients/intake";
@@ -24,7 +24,7 @@ const profileSchema = z.object({
 });
 
 export async function updateProfile(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const parsed = parseForm(profileSchema, formData);
   if (parsed.error) return parsed.error;
   const d = parsed.data;
@@ -45,7 +45,7 @@ export async function updateProfile(_: ActionState, formData: FormData): Promise
     })
     .eq("id", profile.id);
   if (error) return fail(error.message);
-  await markOnboardedIfDone(profile.id);
+  await markOnboardedIfDone(profile.id, business.id);
   revalidatePath("/me", "layout");
   return ok("Profile saved.");
 }
@@ -62,13 +62,13 @@ const intakeSchema = z.object({
 });
 
 export async function saveIntake(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const parsed = parseForm(intakeSchema, formData);
   if (parsed.error) return parsed.error;
   const d = parsed.data as Record<string, string | undefined>;
   const answers = Object.fromEntries(PARQ_QUESTIONS.map((q) => [q.key, d[`parq_${q.key}`] === "yes"]));
 
-  const res = await writeIntake(profile, {
+  const res = await writeIntake(profile, business.id, {
     answers,
     injuries: d.injuries ?? null,
     medications: d.medications ?? null,
@@ -78,7 +78,7 @@ export async function saveIntake(_: ActionState, formData: FormData): Promise<Ac
     emergency_contact_phone: d.emergency_contact_phone!,
   });
   if (res) return res;
-  await markOnboardedIfDone(profile.id);
+  await markOnboardedIfDone(profile.id, business.id);
   revalidatePath("/me", "layout");
   const flagged = Object.values(answers).some(Boolean);
   return ok(
@@ -95,41 +95,37 @@ const waiverSchema = z.object({
 });
 
 export async function signWaiver(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const parsed = parseForm(waiverSchema, formData);
   if (parsed.error) return parsed.error;
   // waiver_accepted_at is stamped by a database trigger.
-  const res = await writeIntake(profile, { waiver_signature: parsed.data.signature, waiver_version: WAIVER_VERSION });
+  const res = await writeIntake(profile, business.id, { waiver_signature: parsed.data.signature, waiver_version: WAIVER_VERSION });
   if (res) return res;
-  await markOnboardedIfDone(profile.id);
+  await markOnboardedIfDone(profile.id, business.id);
   revalidatePath("/me", "layout");
   return ok("Waiver signed. Thank you!");
 }
 
-async function writeIntake(profile: Profile, patch: TablesUpdate<"client_intakes">): Promise<ActionState | null> {
-  const trainerId = await getClientTrainerId(profile.id);
-  if (!trainerId) return fail("You're not connected to a coach yet. Please contact us.");
+/** Intake + waiver are per business: one row per (business, client), written under RLS. */
+async function writeIntake(profile: Profile, businessId: string, patch: TablesUpdate<"client_intakes">): Promise<ActionState | null> {
   const supabase = await createClient();
   const { data: existing } = await supabase
     .from("client_intakes")
     .select("id")
     .eq("client_id", profile.id)
-    .eq("trainer_id", trainerId)
+    .eq("business_id", businessId)
     .maybeSingle();
   const { error } = existing
-    ? await supabase.from("client_intakes").update(patch).eq("id", existing.id)
-    : await supabase.from("client_intakes").insert({ ...patch, client_id: profile.id, trainer_id: trainerId });
+    ? await supabase.from("client_intakes").update(patch).eq("id", existing.id).eq("business_id", businessId)
+    : await supabase.from("client_intakes").insert({ ...patch, client_id: profile.id, business_id: businessId });
   return error ? fail(error.message) : null;
 }
 
-async function markOnboardedIfDone(clientId: string) {
+async function markOnboardedIfDone(clientId: string, businessId: string) {
   const supabase = await createClient();
-  const trainerId = await getClientTrainerId(clientId);
   const [{ data: p }, { data: intake }] = await Promise.all([
     supabase.from("profiles").select("full_name, phone, onboarded_at").eq("id", clientId).single(),
-    trainerId
-      ? supabase.from("client_intakes").select("*").eq("client_id", clientId).eq("trainer_id", trainerId).maybeSingle()
-      : Promise.resolve({ data: null }),
+    supabase.from("client_intakes").select("*").eq("client_id", clientId).eq("business_id", businessId).maybeSingle(),
   ]);
   if (!p || p.onboarded_at) return;
   if (paperworkDone(onboardingSteps({ profile: p, intake, hasBooking: false }))) {

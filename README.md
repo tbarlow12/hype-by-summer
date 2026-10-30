@@ -135,7 +135,7 @@ anything missing or malformed (`src/lib/env-check.ts`, run from `src/instrumenta
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` / `TWILIO_MESSAGING_SERVICE_SID` | for SMS | Text reminders; otherwise logged. |
 | `CRON_SECRET` | for reminders | Vercel Cron bearer token for `/api/cron/reminders`. |
 | `VIDEO_PROVIDER`, `DAILY_API_KEY` | no | `jitsi` (default, demo-grade) or `daily` for live sessions. |
-| `LEAD_TOKEN_SECRET` | recommended | Signs lead download/unsubscribe tokens. |
+| `LEAD_TOKEN_SECRET` | no | Signs lead download/unsubscribe tokens (falls back to the Supabase secret key). |
 
 `OWNER_EMAIL`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_BRAND_NAME` and `NEXT_PUBLIC_PRIMARY_TRAINER_SLUG` are
 gone: businesses, their owners and their URLs come from the database and the request host.

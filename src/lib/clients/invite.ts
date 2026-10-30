@@ -2,15 +2,16 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { brandOf, businessUrl, type Business } from "@/lib/tenant";
 import { sendEmail } from "@/lib/email";
-import { buildSignInUrl } from "./invite-url";
+import { confirmUrl } from "@/lib/auth-emails";
 
-// Branded invitations. Supabase's own invite/magic-link emails carry the
-// project's (platform's) branding, so instead we make sure the auth user
-// exists, mint a one-time sign-in token with generateLink and email a link to
-// the BUSINESS's own site (/auth/confirm verifies it there, so the session
-// cookie lands on that host) with the business as the sender.
-
-export { buildSignInUrl, safeNextPath } from "./invite-url";
+// Branded invitations for staff-initiated adds (clients, team members).
+// Supabase's own invite emails carry the platform's branding, so we make sure
+// the auth user exists (created confirmed, no password), mint a one-time
+// sign-in token with generateLink and email a link to the BUSINESS's own site
+// (/auth/confirm verifies it there, so the session cookie lands on that host)
+// with the business as the sender. Same link format as lib/auth-emails.ts;
+// unlike its sendInvite, the account exists before the email is sent, so the
+// caller can link the person first and the email can be retried.
 
 type Address = Pick<Business, "slug" | "custom_domain" | "domain_verified_at">;
 
@@ -50,7 +51,7 @@ export async function signInLink(business: Address, email: string, next = "/me")
   });
   const token = data?.properties?.hashed_token;
   if (error || !token) return { error: error?.message ?? "Could not create a sign-in link." };
-  return { url: buildSignInUrl(businessUrl(business, "/auth/confirm"), token, next) };
+  return { url: confirmUrl(businessUrl(business), token, "magiclink", next) };
 }
 
 export type InviteEmail = {

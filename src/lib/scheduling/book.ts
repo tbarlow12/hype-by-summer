@@ -184,6 +184,8 @@ export async function bookSlot(input: BookSlotInput): Promise<BookSlotResult> {
  */
 export async function captureConsultLead(input: {
   businessId: string;
+  /** The coach the consult is booked with, when the visitor picked one. */
+  coachId?: string | null;
   email: string;
   name: string;
   phone?: string;
@@ -192,6 +194,7 @@ export async function captureConsultLead(input: {
     const [firstName, ...rest] = input.name.trim().split(/\s+/);
     const lead = await captureLead({
       businessId: input.businessId,
+      assignedCoachId: input.coachId ?? undefined,
       email: input.email,
       firstName,
       lastName: rest.join(" ") || undefined,

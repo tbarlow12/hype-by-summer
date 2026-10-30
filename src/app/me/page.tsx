@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getClientTrainerId, requireClient } from "@/lib/auth";
+import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Badge, Card, CardTitle, EmptyState, LinkButton, cn } from "@/components/ui";
 import { InstallHint } from "@/components/clients/install-hint";
-import { BRAND_NAME } from "@/lib/env";
 import { displayName, formatDate, formatDateTime, formatDuration, titleCase } from "@/lib/format";
 import {
   LIVE_SUBSCRIPTION_STATUSES,
@@ -20,9 +19,9 @@ export const metadata: Metadata = { title: "Home" };
 const UPCOMING_STATUSES = ["confirmed", "pending_payment"] as const;
 
 export default async function ClientHome() {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const tz = profile.timezone;
-  const trainerId = await getClientTrainerId(profile.id);
+  const bid = business.id;
   const supabase = await createClient();
   const now = new Date();
   const nowIso = now.toISOString();
@@ -39,7 +38,7 @@ export default async function ClientHome() {
     { data: credits },
     { data: subs },
     { data: habits },
-    { data: coach },
+    { data: rel },
     { data: logResponses },
     { data: checkInResponses },
     { data: videoReviews },
@@ -47,58 +46,66 @@ export default async function ClientHome() {
     supabase
       .from("bookings")
       .select("id, starts_at, ends_at, status, hold_expires_at, location_type, location_details, video_room_url, session_types(name, duration_minutes)")
+      .eq("business_id", bid)
       .eq("client_id", profile.id)
       .in("status", UPCOMING_STATUSES)
       .gte("ends_at", nowIso)
       .order("starts_at")
       .limit(5),
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("client_id", profile.id).neq("status", "cancelled"),
-    trainerId
-      ? supabase.from("client_intakes").select("*").eq("client_id", profile.id).eq("trainer_id", trainerId).maybeSingle()
-      : Promise.resolve({ data: null }),
+    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("business_id", bid).eq("client_id", profile.id).neq("status", "cancelled"),
+    supabase.from("client_intakes").select("*").eq("client_id", profile.id).eq("business_id", bid).maybeSingle(),
     supabase
       .from("programs")
       .select("id, name, start_date, duration_weeks, program_workouts(id, week, day, name, estimated_minutes, sort_order)")
+      .eq("business_id", bid)
       .eq("client_id", profile.id)
       .eq("status", "active")
       .order("start_date", { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle(),
-    supabase.from("check_ins").select("id, created_at").eq("client_id", profile.id).gte("created_at", week.start.toISOString()).limit(1).maybeSingle(),
+    supabase.from("check_ins").select("id, created_at").eq("business_id", bid).eq("client_id", profile.id).gte("created_at", week.start.toISOString()).limit(1).maybeSingle(),
     supabase
       .from("conversations")
       .select("id, last_message_at, client_last_read_at")
+      .eq("business_id", bid)
       .eq("client_id", profile.id)
-      .order("last_message_at", { ascending: false, nullsFirst: false })
-      .limit(1)
       .maybeSingle(),
-    trainerId ? supabase.rpc("credit_balance", { p_client: profile.id, p_trainer: trainerId }) : Promise.resolve({ data: 0 }),
+    supabase.rpc("credit_balance", { p_client: profile.id, p_business: bid }),
     supabase
       .from("subscriptions")
       .select("id, status, current_period_end, cancel_at_period_end, trial_end, offerings(name)")
+      .eq("business_id", bid)
       .eq("client_id", profile.id)
       .in("status", LIVE_SUBSCRIPTION_STATUSES)
       .order("created_at", { ascending: false })
       .limit(1),
-    supabase.from("habits").select("id, name, target_per_week, habit_logs(logged_on)").eq("client_id", profile.id).eq("active", true).gte("habit_logs.logged_on", week.monday).order("created_at"),
-    trainerId ? supabase.from("profiles").select("full_name, email, avatar_url").eq("id", trainerId).maybeSingle() : Promise.resolve({ data: null }),
+    supabase.from("habits").select("id, name, target_per_week, habit_logs(logged_on)").eq("business_id", bid).eq("client_id", profile.id).eq("active", true).gte("habit_logs.logged_on", week.monday).order("created_at"),
+    supabase
+      .from("business_clients")
+      .select("primary_coach_id, profiles!business_clients_primary_coach_id_fkey(full_name, email, avatar_url)")
+      .eq("business_id", bid)
+      .eq("client_id", profile.id)
+      .maybeSingle(),
     supabase
       .from("workout_logs")
-      .select("id, performed_on, trainer_response, trainer_responded_at, program_workouts(name)")
+      .select("id, performed_on, coach_response, coach_responded_at, program_workouts(name)")
+      .eq("business_id", bid)
       .eq("client_id", profile.id)
-      .not("trainer_response", "is", null)
-      .order("trainer_responded_at", { ascending: false })
+      .not("coach_response", "is", null)
+      .order("coach_responded_at", { ascending: false })
       .limit(3),
     supabase
       .from("check_ins")
-      .select("id, week_of, trainer_response, trainer_responded_at")
+      .select("id, week_of, coach_response, coach_responded_at")
+      .eq("business_id", bid)
       .eq("client_id", profile.id)
-      .not("trainer_response", "is", null)
-      .order("trainer_responded_at", { ascending: false })
+      .not("coach_response", "is", null)
+      .order("coach_responded_at", { ascending: false })
       .limit(3),
     supabase
       .from("video_submissions")
       .select("id, title, reviewed_at")
+      .eq("business_id", bid)
       .eq("client_id", profile.id)
       .eq("status", "reviewed")
       .order("reviewed_at", { ascending: false })
@@ -144,7 +151,7 @@ export default async function ClientHome() {
       ? workouts[0]
       : undefined;
   const { data: todaysLogs } = todays.length
-    ? await supabase.from("workout_logs").select("workout_id").eq("client_id", profile.id).eq("performed_on", today).in("workout_id", todays.map((w) => w.id))
+    ? await supabase.from("workout_logs").select("workout_id").eq("business_id", bid).eq("client_id", profile.id).eq("performed_on", today).in("workout_id", todays.map((w) => w.id))
     : { data: [] as { workout_id: string | null }[] };
   const doneToday = new Set((todaysLogs ?? []).map((l) => l.workout_id));
 
@@ -155,21 +162,22 @@ export default async function ClientHome() {
   const remaining = steps.filter((s) => !s.done).length;
   const sub = subs?.[0];
   const firstName = profile.full_name?.split(/\s+/)[0];
+  const coach = rel?.profiles ?? null;
   const coachName = coach ? displayName(coach) : "your coach";
 
   const responses = [
     ...(logResponses ?? []).map((l) => ({
       key: `log-${l.id}`,
-      at: l.trainer_responded_at ?? l.performed_on,
+      at: l.coach_responded_at ?? l.performed_on,
       title: `On your ${l.program_workouts?.name ?? "workout"} (${formatDate(`${l.performed_on}T12:00:00Z`, "UTC", "MMM d")})`,
-      body: l.trainer_response,
+      body: l.coach_response,
       href: "/me/plan",
     })),
     ...(checkInResponses ?? []).map((c) => ({
       key: `ci-${c.id}`,
-      at: c.trainer_responded_at ?? c.week_of,
+      at: c.coach_responded_at ?? c.week_of,
       title: `Check-in for week of ${formatDate(`${c.week_of}T12:00:00Z`, "UTC", "MMM d")}`,
-      body: c.trainer_response,
+      body: c.coach_response,
       href: "/me/check-in",
     })),
     ...(videoReviews ?? []).map((v) => ({
@@ -235,7 +243,7 @@ export default async function ClientHome() {
         </Card>
       ) : null}
 
-      <InstallHint appName={BRAND_NAME} />
+      <InstallHint appName={business.name} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -290,7 +298,7 @@ export default async function ClientHome() {
             </Link>
           </div>
           {!program ? (
-            <p className="mt-3 text-sm text-zinc-500">{`No program yet. ${coachName} will assign one soon.`}</p>
+            <p className="mt-3 text-sm text-zinc-500">{`No program yet. ${coach ? coachName : business.name} will assign one soon.`}</p>
           ) : todays.length ? (
             <ul className="mt-3 space-y-2">
               {todays.map((w) => (
@@ -360,7 +368,7 @@ export default async function ClientHome() {
               {lastMessage.body ?? (lastMessage.kind === "text" ? "" : `Sent a ${lastMessage.kind.replace("_", " ")}`)}
             </p>
           ) : (
-            <p className="mt-2 text-sm text-zinc-500">No messages yet. Questions? Message {coachName} any time.</p>
+            <p className="mt-2 text-sm text-zinc-500">No messages yet. Questions? Message {coach ? coachName : `the ${business.name} team`} any time.</p>
           )}
           <LinkButton href="/me/messages" size="sm" variant="outline" className="mt-3">
             {unread ? "Read messages" : "Open chat"}
