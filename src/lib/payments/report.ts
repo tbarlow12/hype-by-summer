@@ -45,10 +45,9 @@ export function parseDateRange(
   if (Number.isNaN(Date.parse(to))) to = today;
   if (from > to) [from, to] = [to, from];
   const fromUtc = fromZonedTime(`${from}T00:00:00`, tz);
-  let toUtc = fromZonedTime(`${to}T00:00:00`, tz);
-  toUtc = new Date(toUtc.getTime() + 86_400_000);
-  // Re-anchor across DST: the next local midnight.
-  toUtc = fromZonedTime(`${formatInTimeZone(toUtc, tz, "yyyy-MM-dd")}T00:00:00`, tz);
+  // Exclusive end: local midnight starting the day after `to` (calendar math, so DST days work).
+  const dayAfter = new Date(Date.parse(`${to}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  const toUtc = fromZonedTime(`${dayAfter}T00:00:00`, tz);
   const maxSpan = 3 * 366 * 86_400_000;
   if (toUtc.getTime() - fromUtc.getTime() > maxSpan) {
     const capped = new Date(toUtc.getTime() - maxSpan);
