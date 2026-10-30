@@ -13,26 +13,29 @@ import { openBillingPortal, setMySubscriptionCancel } from "./actions";
 export const metadata = { title: "Billing & credits" };
 
 export default async function BillingPage({ searchParams }: PageProps<"/me/billing">) {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const tz = profile.timezone;
   const { notice } = await searchParams;
   const supabase = await createClient();
+  const canPayOnline = Boolean(business.stripe_account_id && business.stripe_charges_enabled);
 
   const [grants, { data: subs }, { data: payments }, { data: sessionTypes }] = await Promise.all([
-    creditGrantsRemaining(supabase, profile.id),
+    creditGrantsRemaining(supabase, profile.id, business.id),
     supabase
       .from("subscriptions")
       .select("*")
+      .eq("business_id", business.id)
       .eq("client_id", profile.id)
       .order("created_at", { ascending: false }),
     supabase
       .from("payments")
       .select("*")
+      .eq("business_id", business.id)
       .eq("client_id", profile.id)
       .neq("status", "cancelled")
       .order("created_at", { ascending: false })
       .limit(50),
-    supabase.from("session_types").select("id, name, allow_credits, active").order("sort_order"),
+    supabase.from("session_types").select("id, name, allow_credits, active").eq("business_id", business.id).order("sort_order"),
   ]);
 
   // Offerings referenced by purchases may be hidden now, so read them with the service role.
@@ -41,6 +44,7 @@ export default async function BillingPage({ searchParams }: PageProps<"/me/billi
     ? await createAdminClient()
         .from("offerings")
         .select("id, name, kind, price_cents, currency, billing_interval, interval_count, credits, digital_file_path, digital_file_name")
+        .eq("business_id", business.id)
         .in("id", offeringIds)
     : { data: [] };
   const offeringById = new Map((offerings ?? []).map((o) => [o.id, o]));
@@ -77,9 +81,11 @@ export default async function BillingPage({ searchParams }: PageProps<"/me/billi
         description="Your session credits, membership, purchases and receipts."
         actions={
           <>
-            <ActionForm action={openBillingPortal}>
-              <SubmitButton variant="outline" pendingLabel="Opening…">Manage payment methods</SubmitButton>
-            </ActionForm>
+            {canPayOnline ? (
+              <ActionForm action={openBillingPortal}>
+                <SubmitButton variant="outline" pendingLabel="Opening…">Manage payment methods</SubmitButton>
+              </ActionForm>
+            ) : null}
             <LinkButton href="/pricing">Buy more</LinkButton>
           </>
         }

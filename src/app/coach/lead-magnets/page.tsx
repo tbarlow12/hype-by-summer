@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Badge, Card, EmptyState, LinkButton, PageHeader } from "@/components/ui";
 import { GuideCover } from "@/components/marketing/sections";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { absoluteUrl } from "@/lib/env";
+import { businessUrl } from "@/lib/tenant";
 import { toggleMagnetActive } from "./actions";
 import { magnetStats, pct, statsFor } from "./stats";
 import { CopyButton } from "./utm-builder";
@@ -12,11 +12,11 @@ import { CopyButton } from "./utm-builder";
 export const metadata: Metadata = { title: "Lead magnets" };
 
 export default async function LeadMagnetsPage() {
-  const trainer = await requireTrainer();
+  const { business } = await requireStaff();
   const supabase = await createClient();
   const [{ data: magnets }, stats] = await Promise.all([
-    supabase.from("lead_magnets").select("*").eq("trainer_id", trainer.id).order("created_at", { ascending: false }),
-    magnetStats(trainer.id),
+    supabase.from("lead_magnets").select("*").eq("business_id", business.id).order("created_at", { ascending: false }),
+    magnetStats(business.id),
   ]);
   const list = magnets ?? [];
   const totals = list.reduce(
@@ -70,7 +70,7 @@ export default async function LeadMagnetsPage() {
           <ul className="space-y-4">
             {list.map((m) => {
               const s = statsFor(stats, m.id);
-              const url = absoluteUrl(`/free/${m.slug}`);
+              const url = businessUrl(business, `/free/${m.slug}`);
               return (
                 <li key={m.id}>
                   <Card className="flex flex-col gap-5 sm:flex-row">

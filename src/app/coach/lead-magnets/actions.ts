@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
@@ -18,19 +18,20 @@ export type UploadTarget = { bucket: string; path: string; token: string; public
 /**
  * Signed upload URL so the browser uploads straight to Storage (no 50MB
  * request through the server). PDFs go to the private `lead-magnets` bucket,
- * covers to `public-media`, both under the trainer's own folder.
+ * covers to `public-media`, both under the business's folder (<business_id>/…).
+ * Lead magnets are shared marketing: any staff member of the business can manage them.
  */
 export async function createMagnetUpload(
   kind: "pdf" | "cover",
   contentType: string,
   size: number,
 ): Promise<{ ok: true; target: UploadTarget } | { ok: false; error: string }> {
-  const trainer = await requireTrainer();
+  const { business } = await requireStaff();
   const admin = createAdminClient();
   if (kind === "pdf") {
     if (contentType !== "application/pdf") return { ok: false, error: "Upload a PDF file." };
     if (!(size > 0 && size <= MAX_PDF_BYTES)) return { ok: false, error: "PDFs can be up to 50 MB." };
-    const path = `${trainer.id}/${randomUUID()}.pdf`;
+    const path = `${business.id}/${randomUUID()}.pdf`;
     const { data, error } = await admin.storage.from("lead-magnets").createSignedUploadUrl(path);
     if (error || !data) return { ok: false, error: "Could not start the upload." };
     return { ok: true, target: { bucket: "lead-magnets", path, token: data.token } };
@@ -38,7 +39,7 @@ export async function createMagnetUpload(
   const ext = IMAGE_TYPES[contentType];
   if (!ext) return { ok: false, error: "Use a JPG, PNG, WebP or GIF image." };
   if (!(size > 0 && size <= MAX_IMAGE_BYTES)) return { ok: false, error: "Images can be up to 20 MB." };
-  const path = `${trainer.id}/lead-magnets/${randomUUID()}.${ext}`;
+  const path = `${business.id}/lead-magnets/${randomUUID()}.${ext}`;
   const { data, error } = await admin.storage.from("public-media").createSignedUploadUrl(path);
   if (error || !data) return { ok: false, error: "Could not start the upload." };
   const publicUrl = admin.storage.from("public-media").getPublicUrl(path).data.publicUrl;
@@ -71,24 +72,25 @@ const magnetSchema = z.object({
 
 /** Create (id = null) or update a lead magnet. */
 export async function saveMagnet(id: string | null, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const trainer = await requireTrainer();
+  const { business } = await requireStaff();
+  if (id !== null && !z.uuid().safeParse(id).success) return fail("Lead magnet not found.");
   const parsed = parseForm(magnetSchema, formData);
   if (parsed.error) return parsed.error;
   const d = parsed.data;
   const slug = slugify(d.slug || d.title);
   if (!/^[a-z0-9][a-z0-9-]{1,60}$/.test(slug)) return fail("Use at least 2 letters or numbers in the link.");
-  if (d.file_path && !new RegExp(`^${trainer.id}/[0-9a-f-]{36}\\.pdf$`).test(d.file_path)) return fail("Invalid PDF upload.");
+  if (d.file_path && !new RegExp(`^${business.id}/[0-9a-f-]{36}\\.pdf$`).test(d.file_path)) return fail("Invalid PDF upload.");
 
   const supabase = await createClient();
   let previousFile: string | null = null;
   if (id) {
-    const { data: existing } = await supabase.from("lead_magnets").select("file_path").eq("id", id).eq("trainer_id", trainer.id).maybeSingle();
+    const { data: existing } = await supabase.from("lead_magnets").select("file_path").eq("id", id).eq("business_id", business.id).maybeSingle();
     if (!existing) return fail("Lead magnet not found.");
     previousFile = existing.file_path;
   }
 
   const row = {
-    trainer_id: trainer.id,
+    business_id: business.id,
     title: d.title,
     slug,
     subtitle: d.subtitle ?? null,
@@ -108,7 +110,7 @@ export async function saveMagnet(id: string | null, _prev: ActionState, formData
   };
 
   const { data, error } = id
-    ? await supabase.from("lead_magnets").update(row).eq("id", id).eq("trainer_id", trainer.id).select("id").single()
+    ? await supabase.from("lead_magnets").update(row).eq("id", id).eq("business_id", business.id).select("id").single()
     : await supabase.from("lead_magnets").insert(row).select("id").single();
   if (error) {
     if (error.code === "23505") return fail("That link is already taken. Choose a different one.");
@@ -126,7 +128,7 @@ export async function saveMagnet(id: string | null, _prev: ActionState, formData
 }
 
 export async function toggleMagnetActive(formData: FormData): Promise<void> {
-  const trainer = await requireTrainer();
+  const { business } = await requireStaff();
   const id = z.uuid().safeParse(formData.get("id"));
   if (!id.success) return;
   const supabase = await createClient();
@@ -134,17 +136,18 @@ export async function toggleMagnetActive(formData: FormData): Promise<void> {
     .from("lead_magnets")
     .update({ active: formData.get("active") === "true" })
     .eq("id", id.data)
-    .eq("trainer_id", trainer.id);
+    .eq("business_id", business.id);
   revalidatePath("/coach/lead-magnets");
   revalidatePath("/free");
   revalidatePath("/");
 }
 
 export async function deleteMagnet(id: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const trainer = await requireTrainer();
+  const { business } = await requireStaff();
+  if (!z.uuid().safeParse(id).success) return fail("Lead magnet not found.");
   if (formData.get("confirm") !== "on") return fail("Tick the box to confirm.");
   const supabase = await createClient();
-  const { data: magnet } = await supabase.from("lead_magnets").select("id, file_path").eq("id", id).eq("trainer_id", trainer.id).maybeSingle();
+  const { data: magnet } = await supabase.from("lead_magnets").select("id, file_path").eq("id", id).eq("business_id", business.id).maybeSingle();
   if (!magnet) return fail("Lead magnet not found.");
   const { error } = await supabase.from("lead_magnets").delete().eq("id", magnet.id);
   if (error) return fail(error.message);

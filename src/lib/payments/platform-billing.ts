@@ -134,7 +134,7 @@ export async function startPro(businessId: string): Promise<{ url: string } | { 
       metadata,
       subscription_data: { metadata },
       allow_promotion_codes: true,
-      success_url: businessUrl(business, "/coach/payments/plan?upgraded=1"),
+      success_url: businessUrl(business, "/coach/payments/plan?upgraded=1&session_id={CHECKOUT_SESSION_ID}"),
       cancel_url: businessUrl(business, "/coach/payments/plan"),
     },
     { idempotencyKey: `platform-pro-checkout:${business.id}:${window}` },
@@ -221,6 +221,13 @@ export async function applyPlatformSubscription(admin: Admin, sub: Stripe.Subscr
   if (!business.platform_customer_id && sub.customer) {
     await admin.from("businesses").update({ platform_customer_id: idOf(sub.customer) }).eq("id", business.id).is("platform_customer_id", null);
   }
+}
+
+/** Success page: apply a completed Pro checkout right away (the webhook does the same). */
+export async function syncProCheckout(businessId: string, sessionId: string): Promise<void> {
+  const session = await stripe().checkout.sessions.retrieve(sessionId);
+  if (session.metadata?.kind !== PLATFORM_PLAN || session.metadata.business_id !== businessId) return;
+  if (session.status === "complete") await handlePlatformCheckout(createAdminClient(), session);
 }
 
 /** Platform webhook: Pro checkout completed. */

@@ -3,9 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/form";
 import { Alert, Card, CardTitle, Checkbox, LinkButton, PageHeader, Stat } from "@/components/ui";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { absoluteUrl } from "@/lib/env";
+import { businessUrl } from "@/lib/tenant";
 import { deleteMagnet, saveMagnet } from "../actions";
 import { MagnetForm } from "../magnet-form";
 import { magnetStats, pct, statsFor } from "../stats";
@@ -16,16 +16,16 @@ export const metadata: Metadata = { title: "Edit lead magnet" };
 export default async function EditLeadMagnetPage({ params, searchParams }: PageProps<"/coach/lead-magnets/[id]">) {
   const { id } = await params;
   const { created } = await searchParams;
-  const trainer = await requireTrainer();
+  const { business } = await requireStaff();
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const supabase = await createClient();
   const [{ data: magnet }, stats] = await Promise.all([
-    supabase.from("lead_magnets").select("*").eq("id", id).eq("trainer_id", trainer.id).maybeSingle(),
-    magnetStats(trainer.id),
+    supabase.from("lead_magnets").select("*").eq("id", id).eq("business_id", business.id).maybeSingle(),
+    magnetStats(business.id),
   ]);
   if (!magnet) notFound();
   const s = statsFor(stats, magnet.id);
-  const url = absoluteUrl(`/free/${magnet.slug}`);
+  const url = businessUrl(business, `/free/${magnet.slug}`);
 
   return (
     <div className="space-y-6">
