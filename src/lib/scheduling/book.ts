@@ -19,7 +19,7 @@ const TRY_NEXT_COACH = new Set(["slot_conflict", "slot_full", "slot_unavailable"
 
 export type BookSlotInput = {
   /** The business the booking is for (from the host or the authorized staff context). */
-  business: Pick<Business, "id">;
+  business: Pick<Business, "id" | "stripe_charges_enabled">;
   sessionType: SessionType;
   /** A specific coach, or null for "any available coach". */
   coachId: string | null;
@@ -94,7 +94,7 @@ export async function bookSlot(input: BookSlotInput): Promise<BookSlotResult> {
     }
   } else {
     const balance = input.clientId ? await creditBalance(input.clientId, st.business_id, st.id) : null;
-    const allowed = paymentOptions(st, balance);
+    const allowed = paymentOptions(st, balance, input.business.stripe_charges_enabled);
     if (!allowed.includes(input.payment)) {
       return { ok: false, error: input.payment === "credits" ? bookingErrorMessage("insufficient_credits") : "That payment option isn't available." };
     }
@@ -280,7 +280,7 @@ export type RecurringResult = { booked: Booking[]; skipped: { startsAt: string; 
  * (preferring the client's primary coach).
  */
 export async function bookRecurring(input: {
-  business: Pick<Business, "id">;
+  business: Pick<Business, "id" | "stripe_charges_enabled">;
   sessionType: SessionType;
   coachId: string | null;
   preferredCoachId?: string | null;

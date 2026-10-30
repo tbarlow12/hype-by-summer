@@ -213,13 +213,18 @@ export type PaymentSessionType = {
  * need no payment. Credits are offered when the client holds enough; card
  * checkout when the type requires payment, otherwise "pay later".
  */
-export function paymentOptions(st: PaymentSessionType, creditBalance: number | null): PaymentChoice[] {
+/**
+ * How a session can be paid for. `canChargeCards` is false until the business
+ * has connected Stripe; paid sessions then fall back to paying at the session
+ * so a brand-new business's bookings never fail at checkout.
+ */
+export function paymentOptions(st: PaymentSessionType, creditBalance: number | null, canChargeCards = true): PaymentChoice[] {
   if (st.is_consultation || st.price_cents === 0) return ["free"];
   const options: PaymentChoice[] = [];
   if (st.allow_credits && st.credits_required > 0 && creditBalance !== null && creditBalance >= st.credits_required) {
     options.push("credits");
   }
-  options.push(st.requires_payment ? "stripe" : "pay_later");
+  options.push(st.requires_payment && canChargeCards ? "stripe" : "pay_later");
   return options;
 }
 

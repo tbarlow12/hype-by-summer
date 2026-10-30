@@ -64,6 +64,9 @@ export async function siteUrl(path = "/"): Promise<string> {
   return `${proto}://${host}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/** The platform's own accent (matches src/app/platform/platform.css). */
+const PLATFORM_BRAND_COLOR = "#4537e6";
+
 export type Brand = {
   /** Name shown to clients (never the platform's on a business site). */
   name: string;
@@ -81,7 +84,7 @@ export type Brand = {
 export function brandOf(business: Business | null): Brand {
   if (!business) {
     return {
-      name: PLATFORM_NAME, logoUrl: null, palette: brandPalette(null), siteUrl: platformUrl("/"),
+      name: PLATFORM_NAME, logoUrl: null, palette: brandPalette(PLATFORM_BRAND_COLOR), siteUrl: platformUrl("/"),
       replyTo: null, businessId: null, timezone: "America/Denver",
     };
   }

@@ -39,7 +39,10 @@ export default async function CoachLayout({ children }: LayoutProps<"/coach">) {
           { href: "/coach/team", label: "Team", section: "Business" },
           { href: "/coach/settings", label: "Settings", section: "Business" },
         ]
-      : [{ href: "/coach/settings", label: "My profile", section: "Business" }]),
+      : [
+          { href: "/coach/payments", label: "My payments", section: "Business" },
+          { href: "/coach/settings", label: "My profile", section: "Business" },
+        ]),
   ];
 
   return (

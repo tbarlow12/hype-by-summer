@@ -47,7 +47,7 @@ export async function bookingFlowProps(input: {
     viewer: input.client
       ? { name: input.client.full_name, email: input.client.email, phone: input.client.phone, smsOptIn: input.client.sms_opt_in }
       : null,
-    paymentOptions: paymentOptions(st, balance),
+    paymentOptions: paymentOptions(st, balance, business.stripe_charges_enabled),
     creditBalance: balance,
     creditsRequired: st.credits_required,
     policyText: describePolicy(policyOf(business)),

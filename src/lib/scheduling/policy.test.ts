@@ -139,5 +139,8 @@ describe("paymentOptions", () => {
     expect(paymentOptions({ ...st, requires_payment: false }, null)).toEqual(["pay_later"]);
     expect(paymentOptions({ ...st, is_consultation: true }, 5)).toEqual(["free"]);
     expect(paymentOptions({ ...st, price_cents: 0 }, 5)).toEqual(["free"]);
+    // Business without a connected Stripe account: pay at the session instead.
+    expect(paymentOptions(st, null, false)).toEqual(["pay_later"]);
+    expect(paymentOptions(st, 2, false)).toEqual(["credits", "pay_later"]);
   });
 });

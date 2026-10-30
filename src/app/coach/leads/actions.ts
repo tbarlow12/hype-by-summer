@@ -5,13 +5,14 @@ import { revalidatePath } from "next/cache";
 import { fromZonedTime } from "date-fns-tz";
 import { z } from "zod";
 import { isManager, requireStaff } from "@/lib/auth";
+import { sendSignInInvite } from "@/lib/clients/invite";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
 import { sendEmail } from "@/lib/email";
 import { captureLead, leadEmailFooter, notifyLeadOwner, recordLeadEvent, refreshLeadScore } from "@/lib/leads";
 import { ensureClientLinked } from "@/lib/onboarding";
-import { brandOf, businessUrl } from "@/lib/tenant";
+import { brandOf } from "@/lib/tenant";
 import {
   BUDGETS,
   EXPERIENCE_LEVELS,
@@ -303,12 +304,9 @@ export async function inviteLeadAsClient(leadId: string, _prev: ActionState, _fo
   }
 
   const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || undefined;
-  const { error } = await admin.auth.admin.inviteUserByEmail(lead.email, {
-    // Lands on this business's site; signing in there links them as its client.
-    redirectTo: businessUrl(business, "/auth/callback?next=/me"),
-    data: fullName ? { full_name: fullName } : undefined,
-  });
-  if (error) return fail(error.message || "Could not send the invitation.");
+  // Branded invite from this business (Supabase's own invite email would show the platform).
+  const sent = await sendSignInInvite({ business, email: lead.email, fullName, next: "/me" });
+  if (!sent.ok) return fail("Could not send the invitation.");
   await logEvent(business.id, lead.id, "invited", { email: lead.email }, actor);
   refresh(lead.id);
   return ok("Invitation sent. They'll be marked as a client when they sign in.");
