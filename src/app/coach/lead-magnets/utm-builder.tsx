@@ -67,7 +67,7 @@ export function UtmBuilder({ baseUrl, defaultCampaign }: { baseUrl: string; defa
           <Input id={`${id}-m`} value={medium} onChange={(e) => setMedium(e.target.value)} placeholder="social" />
         </Field>
         <Field label="Campaign" htmlFor={`${id}-c`}>
-          <Input id={`${id}-c`} value={campaign} onChange={(e) => setCampaign(e.target.value)} placeholder="summer-2026" />
+          <Input id={`${id}-c`} value={campaign} onChange={(e) => setCampaign(e.target.value)} placeholder="new-year-2027" />
         </Field>
         <Field label="Content (optional)" htmlFor={`${id}-ct`}>
           <Input id={`${id}-ct`} value={content} onChange={(e) => setContent(e.target.value)} placeholder="bio-link" />

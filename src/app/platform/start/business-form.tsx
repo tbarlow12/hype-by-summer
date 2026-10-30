@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import { startTransition, useActionState, useEffect, useId, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui";
 import type { ActionState } from "@/lib/actions";
 import { checkSlug, createBusiness, type SlugCheck } from "./actions";
@@ -29,15 +29,18 @@ export function BusinessForm({ domain }: { domain: string }) {
   const [checking, startCheck] = useTransition();
   const [timezone, setTimezone] = useState("America/Denver");
   const [color, setColor] = useState("#4f46e5");
-  const allZones = useMemo(zones, []);
+  // Filled in on the client (browser and server timezone lists can differ).
+  const [allZones, setAllZones] = useState<string[]>([]);
   const ids = { name: useId(), slug: useId(), tz: useId(), color: useId(), slugHelp: useId() };
   const latest = useRef("");
 
   // Default timezone from the browser.
   useEffect(() => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of a browser-only value
+    /* eslint-disable react-hooks/set-state-in-effect -- one-time read of browser-only values */
+    setAllZones(zones());
     if (tz) setTimezone(tz);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   // Live availability, debounced.

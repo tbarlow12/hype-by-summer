@@ -45,10 +45,10 @@ export function MagnetForm({ action, magnet }: { action: Action; magnet?: Magnet
       <input type="hidden" name="file_path" value={filePath} />
       <div className="space-y-5">
         <Field label="Title" htmlFor="m-title">
-          <Input id="m-title" name="title" required maxLength={160} defaultValue={magnet?.title} placeholder="The 4-Week Summer Starter Plan" />
+          <Input id="m-title" name="title" required maxLength={160} defaultValue={magnet?.title} placeholder="The 4-Week Starter Plan" />
         </Field>
         <Field label="Link" htmlFor="m-slug" hint="yoursite.com/free/<link>. Leave blank to generate from the title.">
-          <Input id="m-slug" name="slug" maxLength={61} defaultValue={magnet?.slug} placeholder="summer-starter" pattern="[a-zA-Z0-9-]*" />
+          <Input id="m-slug" name="slug" maxLength={61} defaultValue={magnet?.slug} placeholder="starter-plan" pattern="[a-zA-Z0-9-]*" />
         </Field>
         <Field label="Subtitle" htmlFor="m-subtitle">
           <Input id="m-subtitle" name="subtitle" maxLength={300} defaultValue={magnet?.subtitle ?? ""} placeholder="A free printable plan, no gym required." />

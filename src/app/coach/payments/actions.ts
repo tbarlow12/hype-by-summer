@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireTrainer } from "@/lib/auth";
+import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
@@ -11,7 +11,9 @@ import { notify } from "@/lib/notify";
 import { createClientInvoice } from "@/lib/payments/invoices";
 import { refundableCents, subscriptionRowFromStripe } from "@/lib/payments/mapping";
 import { refundPayment } from "@/lib/payments/refunds";
-import { stripe } from "@/lib/stripe";
+import { onAccount, stripe } from "@/lib/stripe";
+
+// Money actions are for owners/admins; coaches only view their own payments.
 
 const dollars = z.coerce.number().positive("Enter an amount").max(100_000).transform((v) => Math.round(v * 100));
 
@@ -23,13 +25,13 @@ const refundSchema = z.object({
 });
 
 export async function refundPaymentAction(_: ActionState, formData: FormData): Promise<ActionState> {
-  const trainer = await requireTrainer();
+  const { profile, business } = await requireManager();
   const parsed = parseForm(refundSchema, formData);
   if (parsed.error) return parsed.error;
   const { payment_id, amount, reason, revoke_credits } = parsed.data;
 
   const supabase = await createClient();
-  const { data: payment } = await supabase.from("payments").select("*").eq("id", payment_id).eq("trainer_id", trainer.id).maybeSingle();
+  const { data: payment } = await supabase.from("payments").select("*").eq("id", payment_id).eq("business_id", business.id).maybeSingle();
   if (!payment) return fail("Payment not found.");
   const max = refundableCents(payment);
   if (max <= 0) return fail("Nothing left to refund on this payment.");
@@ -40,7 +42,8 @@ export async function refundPaymentAction(_: ActionState, formData: FormData): P
       amountCents: amount,
       reason,
       revokeCredits: revoke_credits,
-      actorId: trainer.id,
+      actorId: profile.id,
+      businessId: business.id,
     });
     revalidatePath("/coach/payments");
     return ok(`Refunded ${formatMoney(refundedCents, payment.currency)}.`);
@@ -49,34 +52,49 @@ export async function refundPaymentAction(_: ActionState, formData: FormData): P
   }
 }
 
-async function assertMyClient(trainerId: string, clientId: string) {
+async function isClientOf(businessId: string, clientId: string) {
   const supabase = await createClient();
   const { data } = await supabase
-    .from("trainer_clients")
+    .from("business_clients")
     .select("client_id")
-    .eq("trainer_id", trainerId)
+    .eq("business_id", businessId)
     .eq("client_id", clientId)
+    .maybeSingle();
+  return Boolean(data);
+}
+
+async function isCoachOf(businessId: string, coachId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("business_members")
+    .select("user_id")
+    .eq("business_id", businessId)
+    .eq("user_id", coachId)
     .maybeSingle();
   return Boolean(data);
 }
 
 const chargeSchema = z.object({
   client_id: z.uuid("Choose a client"),
+  coach_id: z.union([z.literal(""), z.uuid()]).optional().transform((v) => v || undefined),
   amount: z.coerce.number().min(0.5, "Minimum is $0.50").max(100_000).transform((v) => Math.round(v * 100)),
   description: zfd.requiredText("Add a description").pipe(z.string().max(250)),
   days_until_due: z.coerce.number().int().min(0).max(90).default(7),
 });
 
 export async function chargeClientAction(_: ActionState, formData: FormData): Promise<ActionState> {
-  const trainer = await requireTrainer();
+  const { business } = await requireManager();
   const parsed = parseForm(chargeSchema, formData);
   if (parsed.error) return parsed.error;
   const v = parsed.data;
-  if (!(await assertMyClient(trainer.id, v.client_id))) return fail("That client isn't on your roster.");
+  if (!business.stripe_account_id || !business.stripe_charges_enabled) return fail("Connect Stripe first (Payments → Setup).");
+  if (!(await isClientOf(business.id, v.client_id))) return fail("That person isn't one of your clients.");
+  if (v.coach_id && !(await isCoachOf(business.id, v.coach_id))) return fail("Unknown coach.");
   try {
     await createClientInvoice({
-      trainerId: trainer.id,
+      businessId: business.id,
       clientId: v.client_id,
+      coachId: v.coach_id,
       amountCents: v.amount,
       description: v.description,
       daysUntilDue: v.days_until_due,
@@ -97,32 +115,33 @@ const creditSchema = z.object({
 });
 
 export async function adjustCreditsAction(_: ActionState, formData: FormData): Promise<ActionState> {
-  const trainer = await requireTrainer();
+  const { profile, business } = await requireManager();
   const parsed = parseForm(creditSchema, formData);
   if (parsed.error) return parsed.error;
   const v = parsed.data;
-  if (!(await assertMyClient(trainer.id, v.client_id))) return fail("That client isn't on your roster.");
+  if (!(await isClientOf(business.id, v.client_id))) return fail("That person isn't one of your clients.");
   const admin = createAdminClient();
 
   if (v.amount > 0) {
     const types = v["session_type_ids[]"] ?? [];
     if (types.length) {
-      const { data: owned } = await admin.from("session_types").select("id").eq("trainer_id", trainer.id).in("id", types);
+      const { data: owned } = await admin.from("session_types").select("id").eq("business_id", business.id).in("id", types);
       if ((owned ?? []).length !== types.length) return fail("Unknown session type.");
     }
     const { error } = await admin.from("credit_ledger").insert({
+      business_id: business.id,
       client_id: v.client_id,
-      trainer_id: trainer.id,
       delta: v.amount,
       reason: "adjustment",
       session_type_ids: types.length ? types : null,
       expires_at: v.expires_days ? new Date(Date.now() + v.expires_days * 86_400_000).toISOString() : null,
       note: v.note ?? "Added by your coach",
-      created_by: trainer.id,
+      created_by: profile.id,
     });
     if (error) return fail(error.message);
     await notify({
       userId: v.client_id,
+      businessId: business.id,
       type: "credits",
       title: `${v.amount} session credit${v.amount === 1 ? "" : "s"} added`,
       body: v.note ?? undefined,
@@ -134,11 +153,11 @@ export async function adjustCreditsAction(_: ActionState, formData: FormData): P
 
   const { data: removed, error } = await admin.rpc("debit_credits", {
     p_client: v.client_id,
-    p_trainer: trainer.id,
+    p_business: business.id,
     p_amount: -v.amount,
     p_reason: "adjustment",
     p_note: v.note ?? null,
-    p_created_by: trainer.id,
+    p_created_by: profile.id,
   });
   if (error) return fail(error.message);
   revalidatePath("/coach/payments");
@@ -149,7 +168,7 @@ export async function adjustCreditsAction(_: ActionState, formData: FormData): P
 const subSchema = z.object({ subscription_id: z.uuid(), cancel: z.enum(["true", "false"]) });
 
 export async function setSubscriptionCancelAction(_: ActionState, formData: FormData): Promise<ActionState> {
-  const trainer = await requireTrainer();
+  const { business } = await requireManager();
   const parsed = parseForm(subSchema, formData);
   if (parsed.error) return parsed.error;
   const supabase = await createClient();
@@ -157,15 +176,17 @@ export async function setSubscriptionCancelAction(_: ActionState, formData: Form
     .from("subscriptions")
     .select("id, stripe_subscription_id, status")
     .eq("id", parsed.data.subscription_id)
-    .eq("trainer_id", trainer.id)
+    .eq("business_id", business.id)
     .maybeSingle();
   if (!sub) return fail("Membership not found.");
   if (sub.status === "canceled") return fail("This membership has already ended.");
+  if (!business.stripe_account_id) return fail("Stripe isn't connected.");
   const cancel = parsed.data.cancel === "true";
   try {
     const updated = await stripe().subscriptions.update(
       sub.stripe_subscription_id,
       cancel ? { cancel_at_period_end: true } : { cancel_at_period_end: false, cancel_at: "" },
+      onAccount(business.stripe_account_id),
     );
     await createAdminClient().from("subscriptions").update(subscriptionRowFromStripe(updated)).eq("id", sub.id);
   } catch (err) {

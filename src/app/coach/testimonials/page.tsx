@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Badge, Card, CardTitle, EmptyState, PageHeader } from "@/components/ui";
 import { Stars } from "@/components/marketing/sections";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/format";
 import type { Tables } from "@/lib/supabase/database.types";
@@ -10,14 +10,15 @@ import { AddTestimonialForm } from "./add-form";
 
 export const metadata: Metadata = { title: "Testimonials" };
 
-function TestimonialCard({ t, timeZone }: { t: Tables<"testimonials">; timeZone: string }) {
+function TestimonialCard({ t, timeZone, coach }: { t: Tables<"testimonials">; timeZone: string; coach?: string }) {
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-semibold">{t.author_name}</p>
           <p className="text-xs text-zinc-500">
-            {formatDate(t.created_at, timeZone)} · {t.client_id ? "Submitted by client" : "Added by you"}
+            {formatDate(t.created_at, timeZone)} · {t.client_id ? "Submitted by client" : "Added by staff"}
+            {coach ? ` · for ${coach}` : ""}
           </p>
         </div>
         {t.approved ? <Badge tone="green">On website</Badge> : <Badge tone="amber">Pending</Badge>}
@@ -42,9 +43,18 @@ function TestimonialCard({ t, timeZone }: { t: Tables<"testimonials">; timeZone:
 }
 
 export default async function TestimonialsPage() {
-  const trainer = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const supabase = await createClient();
-  const { data } = await supabase.from("testimonials").select("*").eq("trainer_id", trainer.id).order("created_at", { ascending: false });
+  const [{ data }, { data: team }] = await Promise.all([
+    supabase.from("testimonials").select("*").eq("business_id", business.id).order("created_at", { ascending: false }),
+    supabase
+      .from("business_members")
+      .select("user_id, profiles!business_members_user_id_fkey(full_name)")
+      .eq("business_id", business.id),
+  ]);
+  const solo = (team ?? []).length <= 1;
+  const coachName = (id: string | null) =>
+    solo || !id ? undefined : ((team ?? []).find((m) => m.user_id === id)?.profiles?.full_name ?? undefined);
   const all = data ?? [];
   const pending = all.filter((t) => !t.approved);
   const approved = all.filter((t) => t.approved);
@@ -60,7 +70,7 @@ export default async function TestimonialsPage() {
         {pending.length ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {pending.map((t) => (
-              <TestimonialCard key={t.id} t={t} timeZone={trainer.timezone} />
+              <TestimonialCard key={t.id} t={t} timeZone={profile.timezone} coach={coachName(t.coach_id)} />
             ))}
           </div>
         ) : (
@@ -73,7 +83,7 @@ export default async function TestimonialsPage() {
         {approved.length ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {approved.map((t) => (
-              <TestimonialCard key={t.id} t={t} timeZone={trainer.timezone} />
+              <TestimonialCard key={t.id} t={t} timeZone={profile.timezone} coach={coachName(t.coach_id)} />
             ))}
           </div>
         ) : (

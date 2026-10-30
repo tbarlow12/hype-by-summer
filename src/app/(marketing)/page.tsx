@@ -391,16 +391,16 @@ export default async function HomePage() {
               </div>
             )}
             <div>
-              <p className="text-sm font-bold uppercase tracking-[0.2em] text-brand">Meet your coach</p>
-              <h2 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">Hi, I&apos;m {who}.</h2>
+              <p className="text-sm font-bold uppercase tracking-[0.2em] text-brand">{lead ? "Meet your coach" : "About us"}</p>
+              <h2 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">{lead ? <>Hi, I&apos;m {who}.</> : business.name}</h2>
               {lead?.title ? <p className="mt-2 text-lg font-semibold text-zinc-500">{lead.title}</p> : null}
               <div className="mt-6 space-y-4 text-lg text-zinc-700 dark:text-zinc-300">
                 {coachBio.length ? (
                   coachBio.map((p) => <p key={p.slice(0, 40)}>{p}</p>)
                 ) : (
                   <p>
-                    I help busy people get stronger, move better and build habits that last, without living in the gym or
-                    following a diet they hate.
+                    {lead ? "I help" : "We help"} busy people get stronger, move better and build habits that last, without living in
+                    the gym or following a diet they hate.
                   </p>
                 )}
               </div>

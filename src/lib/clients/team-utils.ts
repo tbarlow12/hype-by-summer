@@ -29,10 +29,11 @@ export function teamChangeError(input: {
 }): string | null {
   const { actorId, actorRole, targetId, targetRole, nextRole, deactivate } = input;
   if (!isManagerRole(actorRole)) return "Only owners and admins manage the team.";
-  const touchesOwner = targetRole === "owner" || nextRole === "owner";
+  const roleChange = nextRole !== undefined && nextRole !== targetRole;
+  const touchesOwner = (roleChange && (targetRole === "owner" || nextRole === "owner")) || (deactivate && targetRole === "owner");
   if (touchesOwner && actorRole !== "owner") return "Only an owner can appoint or change owners.";
   if (deactivate && actorId === targetId) return "You can't deactivate yourself. Ask another owner or admin.";
-  if (nextRole && actorId === targetId && !isManagerRole(nextRole))
+  if (roleChange && actorId === targetId && !isManagerRole(nextRole))
     return "You can't remove your own management access. Ask another owner or admin.";
   return null;
 }

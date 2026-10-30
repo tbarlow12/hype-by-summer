@@ -206,26 +206,27 @@ export async function captureConsultLead(input: {
   }
 }
 
-/** Marks a lead's consult as booked (event + status + assigned coach) once the booking exists. */
+/**
+ * Once a consult booking exists: the lead gets the booking's coach (unless
+ * already assigned) and a consult_booked event (which also moves its status).
+ */
 export async function markConsultBooked(leadId: string, booking: Booking) {
-  try {
-    await recordLeadEvent(leadId, "consult_booked", { booking_id: booking.id, starts_at: booking.starts_at });
-  } catch (err) {
-    console.error("[scheduling] lead event failed", err);
-  }
-  const admin = createAdminClient();
-  await admin
-    .from("leads")
-    .update({ status: "consult_booked" })
-    .eq("id", leadId)
-    .eq("business_id", booking.business_id)
-    .in("status", ["new", "contacted", "nurturing"]);
-  await admin
+  await createAdminClient()
     .from("leads")
     .update({ assigned_coach_id: booking.coach_id })
     .eq("id", leadId)
     .eq("business_id", booking.business_id)
     .is("assigned_coach_id", null);
+  try {
+    await recordLeadEvent({
+      businessId: booking.business_id,
+      leadId,
+      type: "consult_booked",
+      detail: { booking_id: booking.id, starts_at: booking.starts_at, coach_id: booking.coach_id },
+    });
+  } catch (err) {
+    console.error("[scheduling] lead event failed", err);
+  }
 }
 
 /**

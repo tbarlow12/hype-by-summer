@@ -33,13 +33,20 @@ const DEFAULTS = {
 export function SessionTypeForm({
   action,
   sessionType,
+  coaches,
+  defaultCoachIds,
   submitLabel,
 }: {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
   sessionType?: SessionType;
+  /** Team members who can run sessions. */
+  coaches: { id: string; name: string; isBookable: boolean }[];
+  /** Preselected coaches for a new type. */
+  defaultCoachIds?: string[];
   submitLabel: string;
 }) {
   const v = sessionType ?? DEFAULTS;
+  const selected = new Set(sessionType?.coach_ids ?? defaultCoachIds ?? []);
   return (
     <ActionForm action={action} className="flex flex-col gap-6">
       {sessionType ? <input type="hidden" name="id" value={sessionType.id} /> : null}
@@ -48,7 +55,7 @@ export function SessionTypeForm({
         <Field label="Name" htmlFor="name">
           <Input id="name" name="name" defaultValue={v.name} required maxLength={120} />
         </Field>
-        <Field label="Link" htmlFor="slug" hint="Used in your booking URL: /book/your-name/<this>">
+        <Field label="Link" htmlFor="slug" hint="Used in your booking URL: /book/<this>">
           <Input id="slug" name="slug" defaultValue={v.slug} required pattern="[a-z0-9][a-z0-9\-]{0,60}" />
         </Field>
         <Field label="Description" htmlFor="description">
@@ -87,6 +94,25 @@ export function SessionTypeForm({
             <Input id="sort_order" name="sort_order" type="number" defaultValue={v.sort_order} />
           </Field>
         </div>
+      </Card>
+
+      <Card className="flex flex-col gap-3">
+        <CardTitle>Coaches</CardTitle>
+        <p className="-mt-1 text-sm text-zinc-500">
+          Who runs this session. Clients pick one of them or &quot;any available coach&quot;; each coach&apos;s own hours apply.
+        </p>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="sr-only">Coaches</legend>
+          {coaches.map((c) => (
+            <Checkbox
+              key={c.id}
+              name="coach_ids[]"
+              value={c.id}
+              defaultChecked={selected.has(c.id)}
+              label={c.isBookable ? c.name : `${c.name} (not bookable)`}
+            />
+          ))}
+        </fieldset>
       </Card>
 
       <Card className="flex flex-col gap-4">

@@ -3,9 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireTrainer } from "@/lib/auth";
+import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
+import { listCoaches } from "@/lib/scheduling/availability";
+
+// Session types carry prices and policies, so only managers (owner/admin)
+// change them; every staff member can view them.
 
 const schema = z
   .object({
@@ -30,9 +34,12 @@ const schema = z
     active: zfd.checkbox(),
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Pick a color"),
     sort_order: z.coerce.number().int().min(-1000).max(1000),
+    "coach_ids[]": z.array(z.uuid()).max(100).optional(),
   })
-  .transform(({ price, min_notice_hours, ...rest }) => ({
+  .refine((v) => (v["coach_ids[]"]?.length ?? 0) > 0, { message: "Choose at least one coach", path: ["coaches"] })
+  .transform(({ price, min_notice_hours, "coach_ids[]": coachIds, ...rest }) => ({
     ...rest,
+    coach_ids: [...new Set(coachIds ?? [])],
     price_cents: rest.is_consultation ? 0 : price,
     min_notice_minutes: Math.round(min_notice_hours * 60),
     description: rest.description ?? null,
@@ -44,29 +51,37 @@ function saveError(error: { code?: string; message: string }) {
   return fail(error.code === "23505" ? "You already have a session type with that link." : error.message);
 }
 
+/** Coaches must be active staff of this business. */
+async function validCoaches(businessId: string, ids: string[]): Promise<boolean> {
+  const team = new Set((await listCoaches(businessId)).map((c) => c.id));
+  return ids.every((id) => team.has(id));
+}
+
 export async function createSessionTypeAction(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireTrainer();
+  const { business } = await requireManager();
   const parsed = parseForm(schema, formData);
   if (parsed.error) return parsed.error;
+  if (!(await validCoaches(business.id, parsed.data.coach_ids))) return fail("Choose coaches from your team.");
   const supabase = await createClient();
-  const { error } = await supabase.from("session_types").insert({ ...parsed.data, trainer_id: profile.id });
+  const { error } = await supabase.from("session_types").insert({ ...parsed.data, business_id: business.id });
   if (error) return saveError(error);
   revalidatePath("/coach/session-types");
   redirect("/coach/session-types");
 }
 
 export async function updateSessionTypeAction(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireTrainer();
+  const { business } = await requireManager();
   const id = z.uuid().safeParse(formData.get("id"));
   if (!id.success) return fail("Missing session type.");
   const parsed = parseForm(schema, formData);
   if (parsed.error) return parsed.error;
+  if (!(await validCoaches(business.id, parsed.data.coach_ids))) return fail("Choose coaches from your team.");
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("session_types")
     .update(parsed.data)
     .eq("id", id.data)
-    .eq("trainer_id", profile.id)
+    .eq("business_id", business.id)
     .select("id")
     .maybeSingle();
   if (error) return saveError(error);
@@ -76,24 +91,24 @@ export async function updateSessionTypeAction(_: ActionState, formData: FormData
 }
 
 export async function toggleSessionTypeAction(formData: FormData): Promise<void> {
-  const profile = await requireTrainer();
+  const { business } = await requireManager();
   const id = z.uuid().parse(formData.get("id"));
   const active = formData.get("active") === "true";
   const supabase = await createClient();
-  await supabase.from("session_types").update({ active }).eq("id", id).eq("trainer_id", profile.id);
+  await supabase.from("session_types").update({ active }).eq("id", id).eq("business_id", business.id);
   revalidatePath("/coach/session-types");
 }
 
 /** Swap sort order with the neighbour above/below. */
 export async function moveSessionTypeAction(formData: FormData): Promise<void> {
-  const profile = await requireTrainer();
+  const { business } = await requireManager();
   const id = z.uuid().parse(formData.get("id"));
   const dir = formData.get("dir") === "up" ? -1 : 1;
   const supabase = await createClient();
   const { data: types } = await supabase
     .from("session_types")
     .select("id, sort_order")
-    .eq("trainer_id", profile.id)
+    .eq("business_id", business.id)
     .order("sort_order")
     .order("name");
   if (!types) return;
@@ -103,18 +118,18 @@ export async function moveSessionTypeAction(formData: FormData): Promise<void> {
   // Normalise to 0..n then swap, so equal sort orders still move.
   const ordered = types.map((t) => t.id);
   [ordered[index], ordered[index + dir]] = [ordered[index + dir]!, ordered[index]!];
-  await Promise.all(ordered.map((tid, i) => supabase.from("session_types").update({ sort_order: i }).eq("id", tid).eq("trainer_id", profile.id)));
+  await Promise.all(ordered.map((tid, i) => supabase.from("session_types").update({ sort_order: i }).eq("id", tid).eq("business_id", business.id)));
   revalidatePath("/coach/session-types");
 }
 
 export async function deleteSessionTypeAction(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireTrainer();
+  const { business } = await requireManager();
   const id = z.uuid().safeParse(formData.get("id"));
   if (!id.success) return fail("Missing session type.");
   const supabase = await createClient();
-  const { count } = await supabase.from("bookings").select("id", { count: "exact", head: true }).eq("session_type_id", id.data);
+  const { count } = await supabase.from("bookings").select("id", { count: "exact", head: true }).eq("business_id", business.id).eq("session_type_id", id.data);
   if (count) return fail("This session type has bookings, so it can't be deleted. Turn it off instead to hide it.");
-  const { error } = await supabase.from("session_types").delete().eq("id", id.data).eq("trainer_id", profile.id);
+  const { error } = await supabase.from("session_types").delete().eq("id", id.data).eq("business_id", business.id);
   if (error) return fail(error.message);
   revalidatePath("/coach/session-types");
   redirect("/coach/session-types");
