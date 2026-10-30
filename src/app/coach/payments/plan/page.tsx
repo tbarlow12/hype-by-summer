@@ -4,7 +4,7 @@ import { ActionButton } from "@/components/payments/action-button";
 import { Alert, Badge, Card, CardTitle, PageHeader, cn } from "@/components/ui";
 import { requireManager } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
-import { PRO_PRICE_DEFAULT_CENTS, feePercentLabel } from "@/lib/payments/fees";
+import { feePercentLabel, proPriceCents } from "@/lib/payments/fees";
 import { subscriptionRowFromStripe } from "@/lib/payments/mapping";
 import { currentPlatformSubscription, proPrice, syncProCheckout } from "@/lib/payments/platform-billing";
 import { loadBusiness } from "@/lib/payments/shared";
@@ -32,7 +32,7 @@ export default async function PlanPage({ searchParams }: PageProps<"/coach/payme
   const subRow = sub ? subscriptionRowFromStripe(sub) : null;
   const pro = business.plan === "pro";
   const endingAt = pro && subRow?.cancel_at_period_end ? subRow.current_period_end : null;
-  const proLabel = price ? `${formatMoney(price.cents, price.currency)} / ${price.interval}` : `${formatMoney(PRO_PRICE_DEFAULT_CENTS)} / month`;
+  const proLabel = price ? `${formatMoney(price.cents, price.currency)} / ${price.interval}` : `${formatMoney(proPriceCents(process.env.PLATFORM_PRO_PRICE_DOLLARS))} / month`;
   const fee = feePercentLabel(business.platform_fee_bps);
 
   return (

@@ -99,7 +99,10 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/coach/p
           .select("user_id, role, active, profile:profiles!business_members_user_id_fkey(full_name, email)")
           .eq("business_id", business.id)
       : Promise.resolve({ data: [] }),
-    loadCommissionReport(supabase, business.id, range),
+    loadCommissionReport(supabase, business.id, range).catch((err) => {
+      console.error("[payments] commission report failed", err);
+      return [];
+    }),
   ]);
 
   const currency = revenueRows?.[0]?.currency ?? "usd";

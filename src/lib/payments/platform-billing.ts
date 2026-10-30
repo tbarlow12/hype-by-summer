@@ -8,6 +8,7 @@ import { businessUrl } from "@/lib/tenant";
 import {
   PRO_PRICE_DEFAULT_CENTS,
   PRO_PRICE_LOOKUP_KEY,
+  proPriceCents,
   applicationFeePercent,
   planForSubscriptionStatus,
   shouldApplyPlatformSubscription,
@@ -23,12 +24,19 @@ import { isMissing, loadBusiness, type Admin, type Business } from "@/lib/paymen
 const PLATFORM_PLAN = "platform_plan";
 let cachedProPrice: string | null = null;
 
-/** Pro plan price: PLATFORM_PRO_PRICE_ID, else a lookup-keyed price created on first use ($49/month). */
+/**
+ * Pro plan price: PLATFORM_PRO_PRICE_ID, else a monthly price for
+ * PLATFORM_PRO_PRICE_DOLLARS (default $49) found by lookup key or created on
+ * first use. Changing the dollar amount creates a new price for new upgrades.
+ */
 export async function proPriceId(): Promise<string> {
-  if (process.env.PLATFORM_PRO_PRICE_ID) return process.env.PLATFORM_PRO_PRICE_ID;
+  const configured = process.env.PLATFORM_PRO_PRICE_ID?.trim();
+  if (configured) return configured;
   if (cachedProPrice) return cachedProPrice;
+  const cents = proPriceCents(process.env.PLATFORM_PRO_PRICE_DOLLARS);
+  const lookupKey = `${PRO_PRICE_LOOKUP_KEY}_${cents}`;
   const s = stripe();
-  const found = await s.prices.list({ lookup_keys: [PRO_PRICE_LOOKUP_KEY], active: true, limit: 1 });
+  const found = await s.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
   if (found.data[0]) return (cachedProPrice = found.data[0].id);
   const product = await s.products
     .create(
@@ -43,13 +51,12 @@ export async function proPriceId(): Promise<string> {
     {
       product: product.id,
       currency: "usd",
-      unit_amount: PRO_PRICE_DEFAULT_CENTS,
+      unit_amount: cents,
       recurring: { interval: "month" },
-      lookup_key: PRO_PRICE_LOOKUP_KEY,
-      transfer_lookup_key: true,
+      lookup_key: lookupKey,
       metadata: { kind: PLATFORM_PLAN },
     },
-    { idempotencyKey: "platform-pro-price:v1" },
+    { idempotencyKey: `platform-pro-price:${cents}` },
   );
   return (cachedProPrice = price.id);
 }

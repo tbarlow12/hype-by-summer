@@ -36,7 +36,8 @@ export async function ensureConnectedAccount(businessId: string, admin: Admin = 
       },
       metadata: { business_id: business.id },
     },
-    { idempotencyKey: `connect-account:${business.id}` },
+    // Concurrent clicks share a key; a reconnect after disconnecting (row updated since) gets a new account.
+    { idempotencyKey: `connect-account:${business.id}:${business.updated_at}` },
   );
 
   // Claim the column only if nobody connected in the meantime.

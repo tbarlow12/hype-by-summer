@@ -10,6 +10,14 @@ export type FeePolicy = { plan: string; platform_fee_bps: number };
 export const PRO_PRICE_DEFAULT_CENTS = 4900;
 export const PRO_PRICE_LOOKUP_KEY = "platform_pro_monthly";
 
+/** Pro monthly price in cents from PLATFORM_PRO_PRICE_DOLLARS ("49", "49.99"); default $49. */
+export function proPriceCents(dollars: string | null | undefined): number {
+  const raw = dollars?.trim();
+  if (!raw || !/^\d+(\.\d{1,2})?$/.test(raw)) return PRO_PRICE_DEFAULT_CENTS;
+  const cents = Math.round(Number(raw) * 100);
+  return cents >= 50 ? cents : PRO_PRICE_DEFAULT_CENTS;
+}
+
 function feeBps(b: FeePolicy): number {
   if (b.plan !== "starter") return 0;
   return Math.max(0, Math.floor(b.platform_fee_bps));

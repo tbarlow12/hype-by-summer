@@ -4,6 +4,7 @@ import {
   applicationFeePercent,
   feePercentLabel,
   planForSubscriptionStatus,
+  proPriceCents,
   shouldApplyPlatformSubscription,
 } from "./fees";
 
@@ -68,5 +69,15 @@ describe("platform plan", () => {
     expect(
       shouldApplyPlatformSubscription({ platform_subscription_id: "sub_old", platform_subscription_status: "canceled" }, { id: "sub_x", status: "incomplete" }),
     ).toBe(true);
+  });
+});
+
+describe("proPriceCents", () => {
+  it("reads PLATFORM_PRO_PRICE_DOLLARS with a $49 default", () => {
+    expect(proPriceCents(undefined)).toBe(4900);
+    expect(proPriceCents("79")).toBe(7900);
+    expect(proPriceCents("49.99")).toBe(4999);
+    expect(proPriceCents("$49")).toBe(4900);
+    expect(proPriceCents("0")).toBe(4900);
   });
 });
