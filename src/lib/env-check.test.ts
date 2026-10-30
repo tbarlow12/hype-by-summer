@@ -51,6 +51,8 @@ describe("checkEnv", () => {
     expect(errors({ ...complete, PLATFORM_STARTER_FEE_BPS: "3%" })[0]!.message).toMatch(/PLATFORM_STARTER_FEE_BPS/);
     expect(errors({ ...complete, PLATFORM_PRO_PRICE_DOLLARS: "$49" })[0]!.message).toMatch(/PLATFORM_PRO_PRICE_DOLLARS/);
     expect(checkEnv({ ...complete, PLATFORM_STARTER_FEE_BPS: "250", PLATFORM_PRO_PRICE_DOLLARS: "49.99" })).toEqual([]);
+    expect(errors({ ...complete, PLATFORM_PRO_PRICE_ID: "prod_123" })[0]!.message).toMatch(/PLATFORM_PRO_PRICE_ID/);
+    expect(checkEnv({ ...complete, PLATFORM_PRO_PRICE_ID: "price_123" })).toEqual([]);
   });
   it("requires both webhook secrets once Stripe is on", () => {
     expect(errors({ ...complete, STRIPE_WEBHOOK_SECRET: "" })[0]!.message).toMatch(/STRIPE_WEBHOOK_SECRET/);

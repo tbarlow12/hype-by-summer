@@ -126,6 +126,7 @@ anything missing or malformed (`src/lib/env-check.ts`, run from `src/instrumenta
 | `NEXT_PUBLIC_DEFAULT_TENANT_SLUG` | no | Business to serve on hosts that aren't the platform's (previews). |
 | `PLATFORM_STARTER_FEE_BPS` | no | Starter plan fee in basis points (default `300` = 3%). Applied to new businesses. |
 | `PLATFORM_PRO_PRICE_DOLLARS` | no | Pro plan monthly price shown on the pricing page (default `49`). |
+| `PLATFORM_PRO_PRICE_ID` | no | Stripe Price (platform account) to bill Pro with. If unset, a monthly price for `PLATFORM_PRO_PRICE_DOLLARS` is created on the first upgrade (lookup key `platform_pro_monthly_<cents>`). |
 | `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | for payments | The platform's Stripe account (with Connect enabled). |
 | `STRIPE_WEBHOOK_SECRET` | with Stripe | Signing secret of the **platform-account** webhook endpoint. |
 | `STRIPE_CONNECT_WEBHOOK_SECRET` | with Stripe | Signing secret of the **connected-accounts** webhook endpoint. |

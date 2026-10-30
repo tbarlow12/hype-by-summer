@@ -45,6 +45,8 @@ export function checkEnv(env: Env): EnvProblem[] {
   }
   const pro = env.PLATFORM_PRO_PRICE_DOLLARS?.trim();
   if (pro && !(/^\d+(\.\d{1,2})?$/.test(pro))) error("PLATFORM_PRO_PRICE_DOLLARS must be a dollar amount like 49 or 49.99.");
+  const proPrice = env.PLATFORM_PRO_PRICE_ID?.trim();
+  if (proPrice && !proPrice.startsWith("price_")) error("PLATFORM_PRO_PRICE_ID must be a Stripe Price id (price_...) on the platform account.");
 
   // Email: sign-in, signup and password-reset emails are ours (not Supabase's).
   if (!has(env, "RESEND_API_KEY")) {

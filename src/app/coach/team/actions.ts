@@ -88,13 +88,8 @@ export async function inviteMember(_: ActionState, formData: FormData): Promise<
     email: d.email,
     fullName: d.full_name,
     next: "/coach",
-    subject: `Join ${business.name} as ${roleLabel(d.role).toLowerCase()}`,
     heading: `You're on the ${business.name} team`,
-    paragraphs: [
-      `${profile.full_name ?? "Your manager"} added you to ${business.name} as ${roleLabel(d.role).toLowerCase()}.`,
-      "Sign in to see your schedule, clients and messages. No password needed; you can set one later under My profile.",
-    ],
-    ctaLabel: "Open the coach app",
+    message: `${profile.full_name ?? "Your manager"} added you to ${business.name} as ${roleLabel(d.role).toLowerCase()}. Sign in to see your schedule, clients and messages; no password needed.`,
   });
   revalidatePath("/coach/team");
   if (!sent.ok || !sent.emailed) return ok(`Added ${d.email}, but the invitation email couldn't be sent. Use “Resend invite”.`);
@@ -179,10 +174,8 @@ export async function resendMemberInvite(_: ActionState, formData: FormData): Pr
     email: target.profiles.email,
     fullName: target.profiles.full_name,
     next: "/coach",
-    subject: `Your sign-in link for ${business.name}`,
     heading: "Sign in to the coach app",
-    paragraphs: [`Here's a fresh link to sign in to ${business.name}.`],
-    ctaLabel: "Sign in",
+    message: `Here's a fresh link to sign in to ${business.name}.`,
   });
   if (!sent.ok) return fail(sent.error);
   if (!sent.emailed) return fail("The email couldn't be sent. Try again in a minute.");
