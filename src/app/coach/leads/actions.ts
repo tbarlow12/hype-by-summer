@@ -4,13 +4,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { fromZonedTime } from "date-fns-tz";
 import { z } from "zod";
-import { requireTrainer } from "@/lib/auth";
+import { isManager, requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
-import { absoluteUrl } from "@/lib/env";
 import { sendEmail } from "@/lib/email";
-import { captureLead, leadEmailFooter, recordLeadEvent, refreshLeadScore } from "@/lib/leads";
+import { captureLead, leadEmailFooter, notifyLeadOwner, recordLeadEvent, refreshLeadScore } from "@/lib/leads";
+import { ensureClientLinked } from "@/lib/onboarding";
+import { brandOf, businessUrl } from "@/lib/tenant";
 import {
   BUDGETS,
   EXPERIENCE_LEVELS,
@@ -34,14 +35,23 @@ const nullableText = (max: number) =>
     .pipe(z.string().max(max).optional())
     .transform((v) => v ?? null);
 
-/** Loads a lead the signed-in trainer owns (RLS + explicit trainer filter). */
+// The CRM is shared by the business's staff: any staff member can work any
+// lead of the current business (RLS: is_member). Assignment only decides
+// whose "My leads" view it lands in and who gets notified.
+
+/** Loads a lead of the current business for a staff member (RLS + explicit business filter). */
 async function ownedLead(leadId: string) {
-  const trainer = await requireTrainer();
-  if (!z.uuid().safeParse(leadId).success) return { trainer, lead: null, supabase: null };
+  const ctx = await requireStaff();
+  const actor = ctx.profile.id;
+  if (!z.uuid().safeParse(leadId).success) return { ...ctx, actor, lead: null, supabase: null };
   const supabase = await createClient();
-  const { data: lead } = await supabase.from("leads").select("*").eq("id", leadId).eq("trainer_id", trainer.id).maybeSingle();
-  return { trainer, lead, supabase };
+  const { data: lead } = await supabase.from("leads").select("*").eq("id", leadId).eq("business_id", ctx.business.id).maybeSingle();
+  return { ...ctx, actor, lead, supabase };
 }
+
+/** Event on a lead of `businessId` by `actor`. */
+const logEvent = (businessId: string, leadId: string, type: Parameters<typeof recordLeadEvent>[0]["type"], detail: Record<string, unknown>, actor: string) =>
+  recordLeadEvent({ businessId, leadId, type, detail, createdBy: actor });
 
 const refresh = (leadId?: string) => {
   revalidatePath("/coach/leads");
@@ -63,14 +73,16 @@ const createSchema = z.object({
 });
 
 export async function createLeadManually(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const trainer = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const parsed = parseForm(createSchema, formData);
   if (parsed.error) return parsed.error;
   const d = parsed.data;
   let leadId: string;
   try {
     const lead = await captureLead({
-      trainerId: trainer.id,
+      businessId: business.id,
+      // Whoever adds a lead owns it (unless it already exists with a coach).
+      assignedCoachId: profile.id,
       email: d.email,
       firstName: d.first_name,
       lastName: d.last_name,
@@ -82,7 +94,7 @@ export async function createLeadManually(_prev: ActionState, formData: FormData)
       skipRequestInfo: true,
     });
     leadId = lead.id;
-    if (d.note) await recordLeadEvent(lead.id, "note", { text: d.note }, trainer.id);
+    if (d.note) await logEvent(business.id, lead.id, "note", { text: d.note }, profile.id);
   } catch (err) {
     console.error("[leads] manual create failed", err);
     return fail("Could not add the lead.");
@@ -148,7 +160,7 @@ export async function updateLeadDetails(leadId: string, _prev: ActionState, form
 const OPEN_STATUSES = ["new", "contacted", "consult_booked", "nurturing", "converted"] as const;
 
 export async function changeLeadStatus(leadId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { trainer, lead, supabase } = await ownedLead(leadId);
+  const { business, actor, lead, supabase } = await ownedLead(leadId);
   if (!lead || !supabase) return fail("Lead not found.");
   const parsed = z.enum(OPEN_STATUSES).safeParse(formData.get("status"));
   if (!parsed.success) return fail("Pick a status.");
@@ -163,8 +175,8 @@ export async function changeLeadStatus(leadId: string, _prev: ActionState, formD
     })
     .eq("id", lead.id);
   if (error) return fail(error.message);
-  await recordLeadEvent(lead.id, "status_changed", { from: lead.status, to: status }, trainer.id);
-  if (status === "converted") await recordLeadEvent(lead.id, "converted", { manual: true }, trainer.id);
+  await logEvent(business.id, lead.id, "status_changed", { from: lead.status, to: status }, actor);
+  if (status === "converted") await logEvent(business.id, lead.id, "converted", { manual: true }, actor);
   await refreshLeadScore(lead.id);
   refresh(lead.id);
   return ok("Status updated.");
@@ -177,17 +189,17 @@ export async function moveLead(formData: FormData): Promise<void> {
 }
 
 export async function setFollowUp(leadId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { trainer, lead, supabase } = await ownedLead(leadId);
+  const { business, profile, actor, lead, supabase } = await ownedLead(leadId);
   if (!lead || !supabase) return fail("Lead not found.");
   const raw = String(formData.get("next_follow_up_at") ?? "").trim();
   let next: string | null = null;
   if (raw) {
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) return fail("Pick a date and time.");
-    next = fromZonedTime(raw, trainer.timezone).toISOString();
+    next = fromZonedTime(raw, profile.timezone).toISOString();
   }
   const { error } = await supabase.from("leads").update({ next_follow_up_at: next }).eq("id", lead.id);
   if (error) return fail(error.message);
-  await recordLeadEvent(lead.id, "note", { text: next ? `Follow-up set for ${raw.replace("T", " ")}` : "Follow-up cleared", kind: "follow_up", at: next }, trainer.id);
+  await logEvent(business.id, lead.id, "note", { text: next ? `Follow-up set for ${raw.replace("T", " ")}` : "Follow-up cleared", kind: "follow_up", at: next }, actor);
   refresh(lead.id);
   return ok(next ? "Follow-up scheduled." : "Follow-up cleared.");
 }
@@ -198,7 +210,7 @@ const lostSchema = z.object({
 });
 
 export async function markLost(leadId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { trainer, lead, supabase } = await ownedLead(leadId);
+  const { business, actor, lead, supabase } = await ownedLead(leadId);
   if (!lead || !supabase) return fail("Lead not found.");
   const parsed = parseForm(lostSchema, formData);
   if (parsed.error) return parsed.error;
@@ -208,7 +220,7 @@ export async function markLost(leadId: string, _prev: ActionState, formData: For
     .update({ status: "lost", lost_reason: reason, next_follow_up_at: null })
     .eq("id", lead.id);
   if (error) return fail(error.message);
-  await recordLeadEvent(lead.id, "status_changed", { from: lead.status, to: "lost", reason }, trainer.id);
+  await logEvent(business.id, lead.id, "status_changed", { from: lead.status, to: "lost", reason }, actor);
   await refreshLeadScore(lead.id);
   refresh(lead.id);
   return ok("Marked as lost.");
@@ -218,12 +230,12 @@ export async function markLost(leadId: string, _prev: ActionState, formData: For
 // Notes, email, invite, delete
 // ---------------------------------------------------------------------------
 export async function addLeadNote(leadId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { trainer, lead } = await ownedLead(leadId);
+  const { business, actor, lead } = await ownedLead(leadId);
   if (!lead) return fail("Lead not found.");
   const text = String(formData.get("text") ?? "").trim();
   if (!text) return fail("Write a note first.");
   if (text.length > 5000) return fail("Notes are limited to 5,000 characters.");
-  await recordLeadEvent(lead.id, "note", { text }, trainer.id);
+  await logEvent(business.id, lead.id, "note", { text }, actor);
   refresh(lead.id);
   return ok("Note added.");
 }
@@ -234,62 +246,125 @@ const emailSchema = z.object({
 });
 
 export async function emailLead(leadId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { trainer, lead } = await ownedLead(leadId);
+  const { business, profile, actor, lead } = await ownedLead(leadId);
   if (!lead) return fail("Lead not found.");
   const parsed = parseForm(emailSchema, formData);
   if (parsed.error) return parsed.error;
   const { subject, body } = parsed.data;
+  const brand = brandOf(business);
   const result = await sendEmail({
+    brand,
     to: lead.email,
     subject,
     paragraphs: body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean),
-    replyTo: trainer.email,
-    footerNote: leadEmailFooter(lead),
+    // Replies go to the staff member who wrote it.
+    replyTo: profile.email,
+    footerNote: leadEmailFooter(brand, lead),
   });
   if (!result.ok) return fail("The email could not be sent. Please try again.");
-  await recordLeadEvent(lead.id, "email_sent", { subject, body, email_id: result.id ?? null }, trainer.id);
+  await logEvent(business.id, lead.id, "email_sent", { subject, body, email_id: result.id ?? null }, actor);
   refresh(lead.id);
   return ok(`Email sent to ${lead.email}.`);
 }
 
 export async function inviteLeadAsClient(leadId: string, _prev: ActionState, _formData: FormData): Promise<ActionState> {
   void _formData;
-  const { trainer, lead, supabase } = await ownedLead(leadId);
+  const { business, actor, lead, supabase } = await ownedLead(leadId);
   if (!lead || !supabase) return fail("Lead not found.");
   if (lead.status === "converted" && lead.converted_client_id) return fail("This lead is already a client.");
 
   const admin = createAdminClient();
-  const { data: existing } = await admin.from("profiles").select("id, role").eq("email", lead.email).maybeSingle();
+  const { data: existing } = await admin.from("profiles").select("*").eq("email", lead.email).maybeSingle();
   if (existing) {
-    if (existing.role !== "client") return fail("That email belongs to a staff account.");
-    // Already has an account: link them now and convert the lead.
-    await admin
-      .from("trainer_clients")
-      .upsert({ trainer_id: trainer.id, client_id: existing.id, status: "active" }, { onConflict: "trainer_id,client_id" });
-    await admin.rpc("ensure_conversation", { p_trainer: trainer.id, p_client: existing.id });
+    const { data: staff } = await admin
+      .from("business_members")
+      .select("user_id")
+      .eq("business_id", business.id)
+      .eq("user_id", existing.id)
+      .maybeSingle();
+    if (staff) return fail("That email belongs to a member of your team.");
+    // Already has an account: make them a client of this business now (converts the lead).
+    await ensureClientLinked(existing, business.id);
+    if (lead.assigned_coach_id) {
+      await admin
+        .from("business_clients")
+        .update({ primary_coach_id: lead.assigned_coach_id })
+        .eq("business_id", business.id)
+        .eq("client_id", existing.id)
+        .is("primary_coach_id", null);
+    }
     await supabase
       .from("leads")
-      .update({ status: "converted", converted_client_id: existing.id, converted_at: new Date().toISOString() })
+      .update({ status: "converted", converted_client_id: existing.id, converted_at: lead.converted_at ?? new Date().toISOString() })
       .eq("id", lead.id);
-    await recordLeadEvent(lead.id, "converted", { client_id: existing.id, existing_account: true }, trainer.id);
+    await logEvent(business.id, lead.id, "converted", { client_id: existing.id, existing_account: true }, actor);
     refresh(lead.id);
-    return ok("They already had an account, so they're now linked as your client.");
+    return ok("They already had an account, so they're now linked as a client.");
   }
 
   const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || undefined;
   const { error } = await admin.auth.admin.inviteUserByEmail(lead.email, {
-    redirectTo: absoluteUrl("/auth/callback?next=/me"),
+    // Lands on this business's site; signing in there links them as its client.
+    redirectTo: businessUrl(business, "/auth/callback?next=/me"),
     data: fullName ? { full_name: fullName } : undefined,
   });
   if (error) return fail(error.message || "Could not send the invitation.");
-  await recordLeadEvent(lead.id, "invited", { email: lead.email }, trainer.id);
+  await logEvent(business.id, lead.id, "invited", { email: lead.email }, actor);
   refresh(lead.id);
   return ok("Invitation sent. They'll be marked as a client when they sign in.");
 }
 
-export async function deleteLead(leadId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
-  const { lead, supabase } = await ownedLead(leadId);
+// ---------------------------------------------------------------------------
+// Assignment
+// ---------------------------------------------------------------------------
+
+/**
+ * Reassign a lead. Managers can assign anyone on the team (or nobody);
+ * coaches can claim an unassigned lead, or hand their own back.
+ */
+export async function assignLead(leadId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { business, membership, actor, lead, supabase } = await ownedLead(leadId);
   if (!lead || !supabase) return fail("Lead not found.");
+  const raw = String(formData.get("assigned_coach_id") ?? "");
+  const parsed = z.union([z.literal(""), z.uuid()]).safeParse(raw);
+  if (!parsed.success) return fail("Pick a team member.");
+  const to = parsed.data || null;
+  if (to === lead.assigned_coach_id) return ok("No change.");
+
+  if (!isManager(membership)) {
+    const claiming = to === actor && lead.assigned_coach_id === null;
+    const releasing = to === null && lead.assigned_coach_id === actor;
+    if (!claiming && !releasing) return fail("Only owners and admins can reassign leads.");
+  }
+  let toName = "";
+  if (to) {
+    const { data: member } = await createAdminClient()
+      .from("business_members")
+      .select("user_id, profiles!business_members_user_id_fkey(full_name, email)")
+      .eq("business_id", business.id)
+      .eq("user_id", to)
+      .eq("active", true)
+      .maybeSingle();
+    if (!member) return fail("That person isn't on your team.");
+    toName = member.profiles?.full_name || member.profiles?.email || "a teammate";
+  }
+  const { error } = await supabase.from("leads").update({ assigned_coach_id: to }).eq("id", lead.id);
+  if (error) return fail(error.message);
+  await logEvent(business.id, lead.id, "note", { kind: "assigned", from: lead.assigned_coach_id, to, text: to ? `Assigned to ${toName}` : "Unassigned" }, actor);
+  if (to && to !== actor) {
+    await notifyLeadOwner(
+      { id: lead.id, business_id: business.id, assigned_coach_id: to },
+      { type: "lead_assigned", title: `Lead assigned to you: ${[lead.first_name, lead.last_name].filter(Boolean).join(" ") || lead.email}` },
+    );
+  }
+  refresh(lead.id);
+  return ok(to ? "Lead assigned." : "Lead unassigned.");
+}
+
+export async function deleteLead(leadId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { membership, actor, lead, supabase } = await ownedLead(leadId);
+  if (!lead || !supabase) return fail("Lead not found.");
+  if (!isManager(membership) && lead.assigned_coach_id !== actor) return fail("Only owners, admins or the lead's coach can delete it.");
   if (formData.get("confirm") !== "on") return fail("Tick the box to confirm.");
   const { error } = await supabase.from("leads").delete().eq("id", lead.id);
   if (error) return fail(error.message);

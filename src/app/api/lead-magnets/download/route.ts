@@ -2,23 +2,29 @@ import { NextResponse, type NextRequest } from "next/server";
 import { recordLeadEvent, verifyDownloadTokenValue } from "@/lib/leads";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { clientInfoFromHeaders } from "@/lib/leads/headers";
+import { getBusiness } from "@/lib/tenant";
 
-// GET /api/lead-magnets/download?token=… — verifies the signed link, logs the
-// download, then redirects to a short-lived signed Storage URL for the PDF.
+// GET /api/lead-magnets/download?token=… — verifies the signed link (which
+// names the issuing business; it only works on that business's site), logs
+// the download, then redirects to a short-lived signed Storage URL for the PDF.
 export async function GET(request: NextRequest) {
+  const business = await getBusiness();
+  if (!business) return new NextResponse("Not found", { status: 404 });
   const token = request.nextUrl.searchParams.get("token");
   const verified = verifyDownloadTokenValue(token);
   const fail = (reason: string) =>
     NextResponse.redirect(new URL(`/free?download=${reason}`, request.nextUrl.origin), { status: 303 });
   if (!verified.ok) return fail(verified.reason);
 
-  const { leadId, magnetId } = verified.claims;
+  const { businessId, leadId, magnetId } = verified.claims;
+  if (businessId !== business.id) return fail("invalid");
   const admin = createAdminClient();
   const [{ data: magnet }, { data: lead }] = await Promise.all([
-    admin.from("lead_magnets").select("id, trainer_id, slug, title, file_path").eq("id", magnetId).maybeSingle(),
-    admin.from("leads").select("id, trainer_id").eq("id", leadId).maybeSingle(),
+    admin.from("lead_magnets").select("id, business_id, slug, title, file_path").eq("id", magnetId).eq("business_id", business.id).maybeSingle(),
+    admin.from("leads").select("id, business_id").eq("id", leadId).eq("business_id", business.id).maybeSingle(),
   ]);
-  if (!magnet?.file_path || !lead || lead.trainer_id !== magnet.trainer_id) return fail("unavailable");
+  // Files live under lead-magnets/<business_id>/…
+  if (!magnet?.file_path || !lead || !magnet.file_path.startsWith(`${business.id}/`)) return fail("unavailable");
 
   const filename = `${magnet.slug}.pdf`;
   const { data: signed, error } = await admin.storage
@@ -42,11 +48,11 @@ export async function GET(request: NextRequest) {
         .eq("type", "magnet_downloaded")
         .eq("detail->>lead_magnet_id", magnet.id);
       // recordLeadEvent re-scores; the first download for this lead bumps the score.
-      await recordLeadEvent(lead.id, "magnet_downloaded", {
-        lead_magnet_id: magnet.id,
-        slug: magnet.slug,
-        first: (count ?? 0) === 0,
-        country: info.country ?? null,
+      await recordLeadEvent({
+        businessId: business.id,
+        leadId: lead.id,
+        type: "magnet_downloaded",
+        detail: { lead_magnet_id: magnet.id, slug: magnet.slug, first: (count ?? 0) === 0, country: info.country ?? null },
       });
     } catch (err) {
       console.error("[lead-magnets] failed to log download", err);

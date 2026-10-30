@@ -29,7 +29,7 @@ export default async function NewProgramPage({ searchParams }: PageProps<"/coach
       <Card>
         <ActionForm action={createProgram} className="flex flex-col gap-4">
           <Field label="Program name" htmlFor="name">
-            <Input id="name" name="name" required maxLength={120} placeholder="Summer Strength Block" />
+            <Input id="name" name="name" required maxLength={120} placeholder="8-Week Strength Block" />
           </Field>
           <Field label="Goal" htmlFor="goal" hint="Shown to the client, e.g. “Build a stronger squat and deadlift”">
             <Input id="goal" name="goal" maxLength={200} />

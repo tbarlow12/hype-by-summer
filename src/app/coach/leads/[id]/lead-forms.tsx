@@ -151,6 +151,27 @@ export function StatusForm({ action, status }: { action: Action; status: string 
   );
 }
 
+/** Managers pick anyone (or nobody); others get only the options they're allowed (claim / release). */
+export function AssignForm({ action, value, options }: { action: Action; value: string | null; options: { value: string; label: string }[] }) {
+  return (
+    <ActionForm action={action} className="flex gap-2">
+      <label htmlFor="la-coach" className="sr-only">
+        Assigned to
+      </label>
+      <Select id="la-coach" name="assigned_coach_id" defaultValue={value ?? ""} className="min-w-0 flex-1">
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </Select>
+      <SubmitButton variant="secondary" pendingLabel="…">
+        Save
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
 export function FollowUpForm({ action, value }: { action: Action; value: string }) {
   return (
     <ActionForm action={action} className="flex flex-wrap gap-2">

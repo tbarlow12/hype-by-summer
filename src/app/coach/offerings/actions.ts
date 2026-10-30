@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireTrainer } from "@/lib/auth";
+import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
-import { syncOfferingToStripe } from "@/lib/payments/offerings";
+import { syncAllOfferings, syncOfferingToStripe } from "@/lib/payments/offerings";
 import { DIGITAL_BUCKET } from "@/lib/payments/shared";
 import { isStripeConfigured } from "@/lib/stripe";
 
@@ -43,23 +43,23 @@ const schema = z
   });
 
 export async function saveOffering(_: ActionState, formData: FormData): Promise<ActionState> {
-  const trainer = await requireTrainer();
+  const { business } = await requireManager();
   const parsed = parseForm(schema, formData);
   if (parsed.error) return parsed.error;
   const v = parsed.data;
   const supabase = await createClient();
 
-  if (v.digital_file_path && !v.digital_file_path.startsWith(`${trainer.id}/`)) return fail("Invalid file upload.");
+  if (v.digital_file_path && !v.digital_file_path.startsWith(`${business.id}/`)) return fail("Invalid file upload.");
 
-  // Session types must belong to this trainer.
+  // Session types must belong to this business.
   const sessionTypeIds = v["session_type_ids[]"] ?? [];
   if (sessionTypeIds.length) {
-    const { data: owned } = await supabase.from("session_types").select("id").eq("trainer_id", trainer.id).in("id", sessionTypeIds);
+    const { data: owned } = await supabase.from("session_types").select("id").eq("business_id", business.id).in("id", sessionTypeIds);
     if ((owned ?? []).length !== sessionTypeIds.length) return fail("Unknown session type selected.");
   }
 
   const row = {
-    trainer_id: trainer.id,
+    business_id: business.id,
     name: v.name,
     description: v.description ?? null,
     features: (v.features ?? "").split("\n").map((f) => f.trim()).filter(Boolean).slice(0, 20),
@@ -82,10 +82,10 @@ export async function saveOffering(_: ActionState, formData: FormData): Promise<
 
   let id = v.id;
   if (id) {
-    const { data: existing } = await supabase.from("offerings").select("kind, digital_file_path").eq("id", id).eq("trainer_id", trainer.id).maybeSingle();
+    const { data: existing } = await supabase.from("offerings").select("kind, digital_file_path").eq("id", id).eq("business_id", business.id).maybeSingle();
     if (!existing) return fail("Offering not found.");
     if (existing.kind !== v.kind) return fail("The type of an existing offering can't be changed. Create a new one instead.");
-    const { error } = await supabase.from("offerings").update(row).eq("id", id).eq("trainer_id", trainer.id);
+    const { error } = await supabase.from("offerings").update(row).eq("id", id).eq("business_id", business.id);
     if (error) return fail(error.message);
     if (existing.digital_file_path && existing.digital_file_path !== row.digital_file_path) {
       await supabase.storage.from(DIGITAL_BUCKET).remove([existing.digital_file_path]);
@@ -97,7 +97,7 @@ export async function saveOffering(_: ActionState, formData: FormData): Promise<
   }
 
   let syncError: string | null = null;
-  if (isStripeConfigured()) {
+  if (isStripeConfigured() && business.stripe_account_id) {
     try {
       await syncOfferingToStripe(id);
     } catch (err) {
@@ -112,13 +112,13 @@ export async function saveOffering(_: ActionState, formData: FormData): Promise<
 const idSchema = z.object({ id: z.uuid() });
 
 async function ownedOffering(formData: FormData) {
-  const trainer = await requireTrainer();
+  const { business } = await requireManager();
   const parsed = parseForm(idSchema, formData);
   if (parsed.error) return { error: parsed.error };
   const supabase = await createClient();
-  const { data } = await supabase.from("offerings").select("*").eq("id", parsed.data.id).eq("trainer_id", trainer.id).maybeSingle();
+  const { data } = await supabase.from("offerings").select("*").eq("id", parsed.data.id).eq("business_id", business.id).maybeSingle();
   if (!data) return { error: fail("Offering not found.") };
-  return { offering: data, supabase, trainer };
+  return { offering: data, supabase, business };
 }
 
 export async function setOfferingActive(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -127,8 +127,8 @@ export async function setOfferingActive(_: ActionState, formData: FormData): Pro
   const active = formData.get("active") === "true";
   const { error } = await res.supabase.from("offerings").update({ active }).eq("id", res.offering.id);
   if (error) return fail(error.message);
-  let message = active ? "Offering is live." : "Offering hidden and archived in Stripe.";
-  if (isStripeConfigured()) {
+  let message = active ? "Offering is live." : "Offering hidden.";
+  if (isStripeConfigured() && res.business.stripe_account_id) {
     try {
       await syncOfferingToStripe(res.offering.id);
     } catch (err) {
@@ -143,7 +143,8 @@ export async function setOfferingActive(_: ActionState, formData: FormData): Pro
 export async function resyncOffering(_: ActionState, formData: FormData): Promise<ActionState> {
   const res = await ownedOffering(formData);
   if (res.error) return res.error;
-  if (!isStripeConfigured()) return fail("Stripe isn't configured (STRIPE_SECRET_KEY).");
+  if (!isStripeConfigured()) return fail("Online payments aren't available right now.");
+  if (!res.business.stripe_account_id) return fail("Connect Stripe first (Payments → Setup).");
   try {
     await syncOfferingToStripe(res.offering.id);
   } catch (err) {
@@ -165,7 +166,7 @@ export async function deleteOffering(_: ActionState, formData: FormData): Promis
   if ((payments ?? 0) > 0 || (subs ?? 0) > 0) {
     return fail("This offering has purchases, so it can't be deleted. Hide it instead to stop new sales.");
   }
-  if (offering.stripe_product_id && isStripeConfigured()) {
+  if (offering.stripe_product_id && isStripeConfigured() && res.business.stripe_account_id) {
     await supabase.from("offerings").update({ active: false }).eq("id", offering.id);
     try {
       await syncOfferingToStripe(offering.id);
@@ -179,4 +180,13 @@ export async function deleteOffering(_: ActionState, formData: FormData): Promis
   revalidatePath("/coach/offerings");
   revalidatePath("/pricing");
   redirect("/coach/offerings");
+}
+
+export async function syncAllOfferingsAction(_: ActionState, _formData: FormData): Promise<ActionState> {
+  void _formData;
+  const { business } = await requireManager();
+  if (!isStripeConfigured() || !business.stripe_account_id) return fail("Connect Stripe first (Payments → Setup).");
+  const { synced, failed } = await syncAllOfferings(business.id);
+  revalidatePath("/coach/offerings");
+  return failed ? fail(`Synced ${synced}; ${failed} failed. Open them to see why.`) : ok(`Synced ${synced} offering${synced === 1 ? "" : "s"} with Stripe.`);
 }

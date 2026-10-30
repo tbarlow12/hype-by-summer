@@ -4,7 +4,6 @@ import type { Database } from "@/lib/supabase/database.types";
 /** Row returned by the credit_grants_remaining() SQL function. */
 export type CreditGrantRemaining = {
   grant_id: string;
-  trainer_id: string;
   granted: number;
   remaining: number;
   reason: string;
@@ -14,16 +13,13 @@ export type CreditGrantRemaining = {
   created_at: string;
 };
 
-/** Unexpired credit grants with what's left on each (RLS-checked inside the function). */
+/** A client's unexpired credit grants at a business, with what's left on each (access-checked in SQL). */
 export async function creditGrantsRemaining(
   supabase: SupabaseClient<Database>,
   clientId: string,
-  trainerId?: string,
+  businessId: string,
 ): Promise<CreditGrantRemaining[]> {
-  const { data, error } = await supabase.rpc("credit_grants_remaining", {
-    p_client: clientId,
-    ...(trainerId ? { p_trainer: trainerId } : {}),
-  });
+  const { data, error } = await supabase.rpc("credit_grants_remaining", { p_client: clientId, p_business: businessId });
   if (error) throw new Error(error.message);
   return (data ?? []) as CreditGrantRemaining[];
 }

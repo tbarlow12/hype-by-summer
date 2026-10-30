@@ -1,42 +1,51 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/form";
-import { Alert, Badge, buttonClass, Card, CardTitle, Checkbox, Field, Input, PageHeader, Textarea } from "@/components/ui";
-import { requireTrainer } from "@/lib/auth";
+import { Alert, Badge, buttonClass, Card, CardTitle, Checkbox, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
+import { isManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { coachesForType, listCoaches } from "@/lib/scheduling/availability";
+import { staffBooking } from "@/lib/scheduling/staff";
 import { displayName, formatDateTime, formatDuration, formatMoney } from "@/lib/format";
 import { LOCATION_LABELS, STATUS_LABELS, STATUS_TONES } from "@/lib/scheduling/labels";
 import { googleCalendarLink, loadBookingContext } from "@/lib/scheduling/lifecycle";
-import { saveTrainerNotesAction, setOutcomeAction, trainerCancelAction, trainerRescheduleAction } from "../actions";
+import { saveCoachNotesAction, setOutcomeAction, staffCancelAction, staffRescheduleAction } from "../actions";
 
 export const metadata = { title: "Booking" };
 
 const PAYMENT_TEXT = { free: "Free", stripe: "Card", credits: "Credits", subscription: "Membership", pay_later: "Pay at session" } as const;
 
 export default async function BookingDetailPage({ params }: PageProps<"/coach/calendar/[id]">) {
-  const profile = await requireTrainer();
   const { id } = await params;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  // Any staff member of this business may view; changes need canAct.
+  const found = await staffBooking(id);
+  if (!found) notFound();
+  const { staff, canAct } = found;
+  const { profile, business, membership } = staff;
+  const manager = isManager(membership);
   const supabase = await createClient();
-  // RLS + explicit trainer filter: only the trainer's own bookings.
-  const { data: own } = await supabase.from("bookings").select("id").eq("id", id).eq("trainer_id", profile.id).maybeSingle();
-  if (!own) notFound();
-  const ctx = await loadBookingContext(own.id);
+  const ctx = await loadBookingContext(found.booking.id);
   if (!ctx) notFound();
-  const { booking: b, sessionType: st, trainer, client } = ctx;
+  const { booking: b, sessionType: st, client, coach } = ctx;
   const tz = profile.timezone;
+  const typeCoaches = coachesForType(st, await listCoaches(business.id, { bookableOnly: true }));
 
   const [{ data: roster }, { data: payments }, { data: replacement }] = await Promise.all([
     st.capacity > 1
       ? supabase
           .from("bookings")
           .select("id, client_id, guest_name, guest_email, status")
+          .eq("business_id", business.id)
           .eq("session_type_id", st.id)
+          .eq("coach_id", b.coach_id)
           .eq("starts_at", b.starts_at)
           .in("status", ["confirmed", "completed", "no_show", "pending_payment"])
       : Promise.resolve({ data: null }),
-    supabase.from("payments").select("id, amount_cents, amount_refunded_cents, status, purpose, created_at").eq("booking_id", b.id).order("created_at"),
+    // Payment rows are manager-only under RLS; coaches simply see none.
+    supabase.from("payments").select("id, amount_cents, amount_refunded_cents, status, purpose, created_at").eq("business_id", business.id).eq("booking_id", b.id).order("created_at"),
     b.cancel_reason === "rescheduled"
-      ? supabase.from("bookings").select("id").eq("rescheduled_from", b.id).maybeSingle()
+      ? supabase.from("bookings").select("id").eq("business_id", business.id).eq("rescheduled_from", b.id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
   const rosterIds = (roster ?? []).map((r) => r.client_id).filter((x): x is string => Boolean(x));
@@ -50,8 +59,8 @@ export default async function BookingDetailPage({ params }: PageProps<"/coach/ca
   const email = client?.email ?? b.guest_email;
   const phone = b.guest_phone ?? client?.phone;
   const started = Date.parse(b.starts_at) <= new Date().getTime();
-  const canCancel = (b.status === "confirmed" || b.status === "pending_payment") && !started;
-  const canMark = ["confirmed", "completed", "no_show"].includes(b.status) && started;
+  const canCancel = canAct && (b.status === "confirmed" || b.status === "pending_payment") && !started;
+  const canMark = canAct && ["confirmed", "completed", "no_show"].includes(b.status) && started;
   const localValue = formatDateTime(b.starts_at, tz, "yyyy-MM-dd'T'HH:mm");
   const prepaid = b.payment_method === "stripe" || b.payment_method === "credits";
 
@@ -59,7 +68,7 @@ export default async function BookingDetailPage({ params }: PageProps<"/coach/ca
     <div className="flex max-w-3xl flex-col gap-6">
       <PageHeader
         title={st.capacity > 1 ? `${st.name} · ${name}` : name}
-        description={`${st.name} · ${formatDateTime(b.starts_at, tz, "EEEE, MMMM d · h:mm a")}–${formatDateTime(b.ends_at, tz, "h:mm a")}`}
+        description={`${st.name} with ${coach.id === profile.id ? "you" : coach.name} · ${formatDateTime(b.starts_at, tz, "EEEE, MMMM d · h:mm a")}–${formatDateTime(b.ends_at, tz, "h:mm a")}`}
         actions={<Link href={`/coach/calendar?date=${formatDateTime(b.starts_at, tz, "yyyy-MM-dd")}`} className="text-sm font-medium text-brand hover:underline">← Calendar</Link>}
       />
       {replacement ? (
@@ -75,6 +84,9 @@ export default async function BookingDetailPage({ params }: PageProps<"/coach/ca
           {b.recurrence_group ? <Badge tone="purple">Recurring</Badge> : null}
           {b.sms_opt_in ? <Badge tone="green">SMS reminders</Badge> : null}
         </div>
+        {!canAct ? (
+          <p className="mt-3 text-sm text-zinc-500">This is {coach.name}&apos;s session. Only they or a manager can change it.</p>
+        ) : null}
         <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-zinc-500">Client</dt>
@@ -83,6 +95,10 @@ export default async function BookingDetailPage({ params }: PageProps<"/coach/ca
             </dd>
             {email ? <dd><a href={`mailto:${email}`} className="text-zinc-600 hover:underline dark:text-zinc-400">{email}</a></dd> : null}
             {phone ? <dd><a href={`tel:${phone}`} className="text-zinc-600 hover:underline dark:text-zinc-400">{phone}</a></dd> : null}
+          </div>
+          <div>
+            <dt className="text-zinc-500">Coach</dt>
+            <dd className="font-medium">{coach.id === profile.id ? `${coach.name} (you)` : coach.name}</dd>
           </div>
           <div>
             <dt className="text-zinc-500">Session</dt>
@@ -99,12 +115,12 @@ export default async function BookingDetailPage({ params }: PageProps<"/coach/ca
           <div>
             <dt className="text-zinc-500">Payment</dt>
             <dd className="font-medium">
-              {b.payment_method === "credits" ? `${b.credits_used} credit${b.credits_used === 1 ? "" : "s"}` : formatMoney(b.price_cents)}
+              {b.payment_method === "credits" ? `${b.credits_used} credit${b.credits_used === 1 ? "" : "s"}` : formatMoney(b.price_cents, st.currency)}
             </dd>
             {(payments ?? []).map((p) => (
               <dd key={p.id} className="text-zinc-600 dark:text-zinc-400">
-                {p.purpose}: {formatMoney(p.amount_cents)} · {p.status}
-                {p.amount_refunded_cents ? ` (refunded ${formatMoney(p.amount_refunded_cents)})` : ""}
+                {p.purpose}: {formatMoney(p.amount_cents, st.currency)} · {p.status}
+                {p.amount_refunded_cents ? ` (refunded ${formatMoney(p.amount_refunded_cents, st.currency)})` : ""}
               </dd>
             ))}
           </div>
@@ -173,11 +189,11 @@ export default async function BookingDetailPage({ params }: PageProps<"/coach/ca
             <ActionForm action={setOutcomeAction} className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
               <input type="hidden" name="id" value={b.id} />
               <input type="hidden" name="status" value="no_show" />
-              {trainer.no_show_fee_cents > 0 && b.client_id ? (
+              {manager && business.no_show_fee_cents > 0 && b.client_id ? (
                 <Checkbox
                   name="charge_fee"
                   defaultChecked={!prepaid}
-                  label={`Charge the ${formatMoney(trainer.no_show_fee_cents)} no-show fee to their card on file`}
+                  label={`Charge the ${formatMoney(business.no_show_fee_cents)} no-show fee to their card on file`}
                 />
               ) : null}
               <div>
@@ -191,28 +207,46 @@ export default async function BookingDetailPage({ params }: PageProps<"/coach/ca
       ) : null}
 
       <Card>
-        <CardTitle>Private notes</CardTitle>
-        <ActionForm action={saveTrainerNotesAction} className="mt-3 flex flex-col gap-3">
-          <input type="hidden" name="id" value={b.id} />
-          <Textarea name="trainer_notes" defaultValue={b.trainer_notes ?? ""} maxLength={5000} aria-label="Private notes" placeholder="Session notes only you can see" />
-          <div>
-            <SubmitButton size="sm" variant="outline">
-              Save notes
-            </SubmitButton>
-          </div>
-        </ActionForm>
+        <CardTitle>Staff notes</CardTitle>
+        {canAct ? (
+          <ActionForm action={saveCoachNotesAction} className="mt-3 flex flex-col gap-3">
+            <input type="hidden" name="id" value={b.id} />
+            <Textarea name="coach_notes" defaultValue={b.coach_notes ?? ""} maxLength={5000} aria-label="Staff notes" placeholder="Session notes your team can see (never the client)" />
+            <div>
+              <SubmitButton size="sm" variant="outline">
+                Save notes
+              </SubmitButton>
+            </div>
+          </ActionForm>
+        ) : (
+          <p className="mt-2 whitespace-pre-line text-sm">{b.coach_notes ?? "—"}</p>
+        )}
       </Card>
 
-      {b.status === "confirmed" && !started ? (
+      {canAct && b.status === "confirmed" && !started ? (
         <Card>
-          <CardTitle>Reschedule</CardTitle>
-          <p className="mt-1 text-sm text-zinc-500">Pick any free time (your timezone). Payment and credits carry over; the client gets an updated invite.</p>
-          <ActionForm action={trainerRescheduleAction} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <CardTitle>{typeCoaches.length > 1 ? "Reschedule or reassign" : "Reschedule"}</CardTitle>
+          <p className="mt-1 text-sm text-zinc-500">
+            Pick any free time (your timezone){typeCoaches.length > 1 ? " and coach" : ""}. Payment and credits carry over; the client gets an updated invite.
+          </p>
+          <ActionForm action={staffRescheduleAction} className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
             <input type="hidden" name="id" value={b.id} />
             <Field label="New start" htmlFor="starts_at_local" className="flex-1">
               <Input id="starts_at_local" name="starts_at_local" type="datetime-local" defaultValue={localValue} required />
             </Field>
-            <SubmitButton pendingLabel="Moving…">Reschedule</SubmitButton>
+            {typeCoaches.length > 1 ? (
+              <Field label="Coach" htmlFor="coach_id" className="flex-1">
+                <Select id="coach_id" name="coach_id" defaultValue={b.coach_id}>
+                  {typeCoaches.some((c) => c.id === b.coach_id) ? null : <option value={b.coach_id}>{coach.name}</option>}
+                  {typeCoaches.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
+            <SubmitButton pendingLabel="Moving…">Save</SubmitButton>
           </ActionForm>
         </Card>
       ) : null}
@@ -220,13 +254,17 @@ export default async function BookingDetailPage({ params }: PageProps<"/coach/ca
       {canCancel ? (
         <Card>
           <CardTitle>Cancel booking</CardTitle>
-          <ActionForm action={trainerCancelAction} className="mt-3 flex flex-col gap-3">
+          <ActionForm action={staffCancelAction} className="mt-3 flex flex-col gap-3">
             <input type="hidden" name="id" value={b.id} />
             <Field label="Message to the client (optional)" htmlFor="reason">
               <Textarea id="reason" name="reason" maxLength={500} className="min-h-16" />
             </Field>
             {b.status === "confirmed" && (b.payment_method === "stripe" || b.credits_used > 0) ? (
-              <Checkbox name="refund" defaultChecked label={b.payment_method === "stripe" ? "Refund the card payment in full" : "Return the session credits"} />
+              manager ? (
+                <Checkbox name="refund" defaultChecked label={b.payment_method === "stripe" ? "Refund the card payment in full" : "Return the session credits"} />
+              ) : (
+                <p className="text-sm text-zinc-500">{b.payment_method === "stripe" ? "The card payment will be refunded in full." : "The session credits will be returned."}</p>
+              )
             ) : null}
             <div>
               <SubmitButton variant="danger" pendingLabel="Cancelling…">

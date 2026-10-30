@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { Alert, Badge, Card, EmptyState, LinkButton, PageHeader } from "@/components/ui";
 import { ActionButton } from "@/components/payments/action-button";
-import { requireTrainer } from "@/lib/auth";
+import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/format";
 import { priceLabel } from "@/lib/payments/format";
 import { isOfferingSynced } from "@/lib/payments/offerings";
 import { isStripeConfigured } from "@/lib/stripe";
 import type { Tables } from "@/lib/supabase/database.types";
-import { resyncOffering, setOfferingActive } from "./actions";
+import { resyncOffering, setOfferingActive, syncAllOfferingsAction } from "./actions";
 
 export const metadata = { title: "Packages & plans" };
 
@@ -21,18 +21,19 @@ const GROUPS: { kind: Offering["kind"]; title: string; description: string }[] =
 ];
 
 export default async function OfferingsPage({ searchParams }: PageProps<"/coach/offerings">) {
-  const trainer = await requireTrainer();
+  const { business } = await requireManager();
   const { saved, sync } = await searchParams;
   const supabase = await createClient();
   const [{ data: offerings }, { data: sessionTypes }, { data: sold }] = await Promise.all([
-    supabase.from("offerings").select("*").eq("trainer_id", trainer.id).order("sort_order").order("created_at"),
-    supabase.from("session_types").select("id, name").eq("trainer_id", trainer.id),
-    supabase.from("payments").select("offering_id").eq("trainer_id", trainer.id).eq("status", "succeeded").not("offering_id", "is", null),
+    supabase.from("offerings").select("*").eq("business_id", business.id).order("sort_order").order("created_at"),
+    supabase.from("session_types").select("id, name").eq("business_id", business.id),
+    supabase.from("payments").select("offering_id").eq("business_id", business.id).eq("status", "succeeded").not("offering_id", "is", null),
   ]);
   const typeNames = new Map((sessionTypes ?? []).map((s) => [s.id, s.name]));
   const salesBy = new Map<string, number>();
   for (const p of sold ?? []) salesBy.set(p.offering_id!, (salesBy.get(p.offering_id!) ?? 0) + 1);
-  const stripeReady = isStripeConfigured();
+  const stripeReady = isStripeConfigured() && Boolean(business.stripe_account_id);
+  const canSell = stripeReady && business.stripe_charges_enabled;
 
   return (
     <div className="flex flex-col gap-8">
@@ -56,8 +57,17 @@ export default async function OfferingsPage({ searchParams }: PageProps<"/coach/
           <Alert tone="green">Saved “{saved}”.</Alert>
         )
       ) : null}
-      {!stripeReady ? (
-        <Alert tone="amber">Stripe isn&apos;t configured yet (STRIPE_SECRET_KEY), so offerings can&apos;t be purchased.</Alert>
+      {!canSell ? (
+        <Alert tone="amber">
+          {stripeReady ? "Finish Stripe onboarding" : "Connect Stripe"} so clients can buy these online.{" "}
+          <Link href="/coach/payments/setup" className="font-semibold underline">Payments setup</Link>
+        </Alert>
+      ) : null}
+      {stripeReady && offerings?.some((o) => !isOfferingSynced(o)) ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">Some offerings aren&apos;t synced to your Stripe account yet.</p>
+          <ActionButton action={syncAllOfferingsAction} fields={{}} pendingLabel="Syncing…">Sync all</ActionButton>
+        </div>
       ) : null}
 
       {!offerings?.length ? (
@@ -124,7 +134,7 @@ export default async function OfferingsPage({ searchParams }: PageProps<"/coach/
                           {o.kind === "one_time" ? <li>{o.digital_file_path ? `File: ${o.digital_file_name ?? o.digital_file_path.split("/").pop()}` : "Service (no file)"}</li> : null}
                           <li>{salesBy.get(o.id) ?? 0} sale{salesBy.get(o.id) === 1 ? "" : "s"}</li>
                           {o.stripe_synced_at ? (
-                            <li className="text-xs text-zinc-500">Last synced {formatDateTime(o.stripe_synced_at, trainer.timezone)}</li>
+                            <li className="text-xs text-zinc-500">Last synced {formatDateTime(o.stripe_synced_at, business.timezone)}</li>
                           ) : null}
                         </ul>
                         {o.stripe_sync_error ? <p className="text-xs text-red-600">{o.stripe_sync_error}</p> : null}

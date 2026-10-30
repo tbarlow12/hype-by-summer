@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireTrainer } from "@/lib/auth";
+import { isManager, requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, SubmitButton } from "@/components/form";
 import { Alert, Avatar, Badge, Button, Card, CardTitle, Checkbox, EmptyState, Field, Input, LinkButton, Select, Stat, Textarea, cn } from "@/components/ui";
 import { ConfirmButton } from "@/components/clients/confirm-button";
+import { coachesOf, listTeam } from "@/lib/clients/team";
+import { roleLabel } from "@/lib/clients/team-utils";
+import { ResendInviteButton } from "./resend-invite";
 import { statusTone, subscriptionTone } from "@/components/clients/status";
 import { ClientTrainingSummary } from "@/components/training/client-training-summary";
 import { ClientHabitsGoalsEditor } from "@/components/training/client-habits-goals-editor";
@@ -25,8 +28,10 @@ const bookingTone = (s: string) =>
   s === "confirmed" || s === "completed" ? "green" : s === "pending_payment" ? "amber" : s === "no_show" || s === "late_cancelled" ? "red" : "neutral";
 
 export default async function ClientDetailPage({ params, searchParams }: PageProps<"/coach/clients/[id]">) {
-  const trainer = await requireTrainer();
-  const tz = trainer.timezone;
+  const { profile, business, membership } = await requireStaff();
+  const manager = isManager(membership);
+  const tz = profile.timezone;
+  const bid = business.id;
   const { id } = await params;
   const sp = await searchParams;
   const tabParam = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab;
@@ -35,9 +40,10 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   const supabase = await createClient();
-  const [{ data: rel }, { data: client }] = await Promise.all([
-    supabase.from("trainer_clients").select("*").eq("trainer_id", trainer.id).eq("client_id", id).maybeSingle(),
+  const [{ data: rel }, { data: client }, team] = await Promise.all([
+    supabase.from("business_clients").select("*").eq("business_id", bid).eq("client_id", id).maybeSingle(),
     supabase.from("profiles").select("id, full_name, email, phone, avatar_url, timezone, date_of_birth, created_at, onboarded_at, sms_opt_in, marketing_opt_in").eq("id", id).maybeSingle(),
+    listTeam(supabase, bid),
   ]);
   if (!rel || !client) notFound();
 
@@ -45,8 +51,10 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
     .from("client_intakes")
     .select("*")
     .eq("client_id", id)
-    .eq("trainer_id", trainer.id)
+    .eq("business_id", bid)
     .maybeSingle();
+  const coaches = coachesOf(team);
+  const primaryCoach = team.find((m) => m.userId === rel.primary_coach_id);
 
   const name = displayName(client);
   const tabHref = (t: Tab) => `/coach/clients/${id}${t === "overview" ? "" : `?tab=${t}`}`;
@@ -60,10 +68,14 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       </Link>
 
       {added ? (
-        <Alert tone="green">
+        <Alert tone={added.endsWith("-noemail") ? "amber" : "green"}>
           {added === "invited"
-            ? `Invitation sent to ${client.email}. They'll land on their onboarding checklist after accepting.`
-            : `${name} already had an account and is now linked to you.`}
+            ? `${name} is added. We emailed ${client.email} a link to sign in; they'll land on their onboarding checklist.`
+            : added === "created"
+              ? `${name} is added. No email was sent; use “Send sign-in link” when you're ready.`
+              : added === "linked"
+                ? `${name} already had an account and is now one of your clients.`
+                : `${name} is added, but the email couldn't be sent. Try “Send sign-in link” again.`}
         </Alert>
       ) : null}
 
@@ -88,6 +100,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
               </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 <Badge tone={statusTone(rel.status)}>{titleCase(rel.status)}</Badge>
+                <Badge tone="blue">{primaryCoach ? `Coach: ${primaryCoach.userId === profile.id ? "You" : primaryCoach.name}` : "No primary coach"}</Badge>
                 <Badge tone={signed ? "green" : "amber"}>{signed ? "Waiver signed" : "No waiver"}</Badge>
                 {flags.length ? <Badge tone="red">PAR-Q flags: {flags.length}</Badge> : null}
                 {rel.tags.map((t) => (
@@ -107,16 +120,32 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
             <LinkButton href={`/coach/programs?assign=${id}`} size="sm" variant="outline">
               Assign program
             </LinkButton>
-            <LinkButton href={`/coach/payments?client=${id}`} size="sm" variant="outline">
-              Charge
-            </LinkButton>
+            {manager ? (
+              <LinkButton href={`/coach/payments?client=${id}`} size="sm" variant="outline">
+                Charge
+              </LinkButton>
+            ) : null}
+            {rel.status === "invited" || !client.onboarded_at ? <ResendInviteButton clientId={id} /> : null}
           </div>
         </div>
 
         <details className="mt-5 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-          <summary className="cursor-pointer text-sm font-semibold">Status, tags & goals</summary>
+          <summary className="cursor-pointer text-sm font-semibold">Coach, status, tags & goals</summary>
           <ActionForm action={updateClientDetails.bind(null, id)} className="mt-4 grid gap-4 sm:grid-cols-2">
-            <Field label="Status" htmlFor="status" hint="Archived clients lose portal access to booking with you.">
+            <Field label="Primary coach" htmlFor="primary_coach_id" hint="Their go-to coach: it puts them on that coach's dashboard.">
+              <Select id="primary_coach_id" name="primary_coach_id" defaultValue={rel.primary_coach_id ?? ""}>
+                <option value="">Unassigned</option>
+                {coaches.map((c) => (
+                  <option key={c.userId} value={c.userId}>
+                    {c.name} ({roleLabel(c.role)})
+                  </option>
+                ))}
+                {primaryCoach && !coaches.includes(primaryCoach) ? (
+                  <option value={primaryCoach.userId}>{primaryCoach.name} (inactive)</option>
+                ) : null}
+              </Select>
+            </Field>
+            <Field label="Status" htmlFor="status" hint="Archived clients lose access to your client app.">
               <Select id="status" name="status" defaultValue={rel.status === "invited" ? "active" : rel.status}>
                 <option value="active">Active</option>
                 <option value="paused">Paused</option>
@@ -158,7 +187,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         ))}
       </nav>
 
-      {tab === "overview" ? <Overview clientId={id} trainerId={trainer.id} tz={tz} /> : null}
+      {tab === "overview" ? <Overview clientId={id} businessId={bid} tz={tz} manager={manager} /> : null}
       {tab === "training" ? (
         <div className="space-y-6">
           <ClientTrainingSummary clientId={id} />
@@ -166,21 +195,21 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         </div>
       ) : null}
       {tab === "intake" ? <IntakeSection intake={intake} tz={tz} /> : null}
-      {tab === "notes" ? <Notes clientId={id} trainerId={trainer.id} tz={tz} /> : null}
+      {tab === "notes" ? <Notes clientId={id} businessId={bid} tz={tz} me={profile.id} manager={manager} /> : null}
     </div>
   );
 }
 
-async function Overview({ clientId, trainerId, tz }: { clientId: string; trainerId: string; tz: string }) {
+async function Overview({ clientId, businessId, tz, manager }: { clientId: string; businessId: string; tz: string; manager: boolean }) {
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
-  const bookingCols = "id, starts_at, status, location_type, video_room_url, payment_method, session_types(name)";
+  const bookingCols = "id, coach_id, starts_at, status, location_type, video_room_url, payment_method, session_types(name), profiles!bookings_coach_id_fkey(full_name, email)";
   const [{ data: upcoming }, { data: past }, { data: ledger }, { data: types }, { data: subs }, { data: payments }, { count: completedCount }] =
     await Promise.all([
       supabase
         .from("bookings")
         .select(bookingCols)
-        .eq("trainer_id", trainerId)
+        .eq("business_id", businessId)
         .eq("client_id", clientId)
         .gte("starts_at", nowIso)
         .in("status", ["confirmed", "pending_payment"])
@@ -189,29 +218,29 @@ async function Overview({ clientId, trainerId, tz }: { clientId: string; trainer
       supabase
         .from("bookings")
         .select(bookingCols)
-        .eq("trainer_id", trainerId)
+        .eq("business_id", businessId)
         .eq("client_id", clientId)
         .lt("starts_at", nowIso)
         .order("starts_at", { ascending: false })
         .limit(10),
-      supabase.from("credit_ledger").select("id, delta, grant_id, expires_at, session_type_ids").eq("trainer_id", trainerId).eq("client_id", clientId),
-      supabase.from("session_types").select("id, name").eq("trainer_id", trainerId),
+      supabase.from("credit_ledger").select("id, delta, grant_id, expires_at, session_type_ids").eq("business_id", businessId).eq("client_id", clientId),
+      supabase.from("session_types").select("id, name").eq("business_id", businessId),
       supabase
         .from("subscriptions")
         .select("id, status, current_period_end, cancel_at_period_end, trial_end, offerings(name, price_cents, billing_interval, interval_count)")
-        .eq("trainer_id", trainerId)
+        .eq("business_id", businessId)
         .eq("client_id", clientId)
         .order("created_at", { ascending: false }),
       supabase
         .from("payments")
         .select("id, status, amount_cents, amount_refunded_cents, currency, description, purpose, paid_at, created_at")
-        .eq("trainer_id", trainerId)
+        .eq("business_id", businessId)
         .eq("client_id", clientId)
         .order("created_at", { ascending: false }),
       supabase
         .from("bookings")
         .select("id", { count: "exact", head: true })
-        .eq("trainer_id", trainerId)
+        .eq("business_id", businessId)
         .eq("client_id", clientId)
         .eq("status", "completed"),
     ]);
@@ -227,7 +256,7 @@ async function Overview({ clientId, trainerId, tz }: { clientId: string; trainer
       <div className="min-w-0">
         <p className="font-medium">{formatDateTime(b.starts_at, tz)}</p>
         <p className="truncate text-xs text-zinc-500">
-          {b.session_types?.name ?? "Session"} · {titleCase(b.location_type)} · {titleCase(b.payment_method)}
+          {b.session_types?.name ?? "Session"} · {displayName(b.profiles)} · {titleCase(b.location_type)} · {titleCase(b.payment_method)}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -244,7 +273,11 @@ async function Overview({ clientId, trainerId, tz }: { clientId: string; trainer
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Lifetime value" value={formatMoney(ltv)} hint={`${(payments ?? []).filter((p) => p.status === "succeeded" || p.status === "partially_refunded").length} payments`} />
+        <Stat
+          label={manager ? "Lifetime value" : "Paid for your sessions"}
+          value={formatMoney(ltv)}
+          hint={`${(payments ?? []).filter((p) => p.status === "succeeded" || p.status === "partially_refunded").length} payments`}
+        />
         <Stat label="Sessions done" value={completedCount ?? 0} />
         <Stat label="Credits left" value={totalCredits} hint={buckets.length > 1 ? "across packages" : undefined} />
         <Stat
@@ -324,10 +357,12 @@ async function Overview({ clientId, trainerId, tz }: { clientId: string; trainer
         </Card>
         <Card>
           <div className="flex items-center justify-between">
-            <CardTitle>Payments</CardTitle>
-            <Link href={`/coach/payments?client=${clientId}`} className="text-sm text-brand hover:underline">
-              All
-            </Link>
+            <CardTitle>{manager ? "Payments" : "Payments for your sessions"}</CardTitle>
+            {manager ? (
+              <Link href={`/coach/payments?client=${clientId}`} className="text-sm text-brand hover:underline">
+                All
+              </Link>
+            ) : null}
           </div>
           {payments?.length ? (
             <ul className="mt-2 divide-y divide-zinc-100 text-sm dark:divide-zinc-800">
@@ -431,12 +466,12 @@ function Item({ label, value }: { label: string; value: string | null | undefine
   );
 }
 
-async function Notes({ clientId, trainerId, tz }: { clientId: string; trainerId: string; tz: string }) {
+async function Notes({ clientId, businessId, tz, me, manager }: { clientId: string; businessId: string; tz: string; me: string; manager: boolean }) {
   const supabase = await createClient();
   const { data: notes } = await supabase
     .from("client_notes")
-    .select("id, body, pinned, created_at, booking_id")
-    .eq("trainer_id", trainerId)
+    .select("id, body, pinned, created_at, booking_id, author_id, profiles!client_notes_author_id_fkey(full_name, email, avatar_url)")
+    .eq("business_id", businessId)
     .eq("client_id", clientId)
     .order("pinned", { ascending: false })
     .order("created_at", { ascending: false });
@@ -445,7 +480,7 @@ async function Notes({ clientId, trainerId, tz }: { clientId: string; trainerId:
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
       <Card className="h-fit">
         <CardTitle>Add a private note</CardTitle>
-        <p className="mt-1 text-xs text-zinc-500">Only you can see notes. Clients never do.</p>
+        <p className="mt-1 text-xs text-zinc-500">Shared with your team, signed with your name. Clients never see notes.</p>
         <ActionForm action={addNote.bind(null, clientId)} resetOnSuccess className="mt-3 space-y-3">
           <label htmlFor="note-body" className="sr-only">Note</label>
           <Textarea id="note-body" name="body" required placeholder="Session observations, preferences, life context…" />
@@ -460,10 +495,15 @@ async function Notes({ clientId, trainerId, tz }: { clientId: string; trainerId:
               <li key={n.id}>
                 <Card className={cn("p-4", n.pinned && "border-brand/40 bg-brand/5 dark:bg-brand/10")}>
                   <div className="flex items-start justify-between gap-3">
-                    <p className="text-xs text-zinc-500">
-                      {n.pinned ? <Badge tone="brand" className="mr-2">Pinned</Badge> : null}
-                      {formatDateTime(n.created_at, tz)}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-2 text-xs text-zinc-500">
+                      <Avatar name={displayName(n.profiles)} src={n.profiles?.avatar_url} size={24} />
+                      <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                        {n.author_id === me ? "You" : n.profiles ? displayName(n.profiles) : "Former team member"}
+                      </span>
+                      <span>· {formatDateTime(n.created_at, tz)}</span>
+                      {n.pinned ? <Badge tone="brand">Pinned</Badge> : null}
+                    </div>
+                    {n.author_id === me || manager ? (
                     <div className="flex shrink-0 gap-1">
                       <form action={toggleNotePin}>
                         <input type="hidden" name="note_id" value={n.id} />
@@ -481,6 +521,7 @@ async function Notes({ clientId, trainerId, tz }: { clientId: string; trainerId:
                         </ConfirmButton>
                       </form>
                     </div>
+                    ) : null}
                   </div>
                   <p className="mt-2 whitespace-pre-line text-sm">{n.body}</p>
                 </Card>

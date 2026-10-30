@@ -22,12 +22,12 @@ export function OfferingForm({
   action,
   offering,
   sessionTypes,
-  trainerId,
+  businessId,
 }: {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
   offering?: Offering | null;
   sessionTypes: { id: string; name: string }[];
-  trainerId: string;
+  businessId: string;
 }) {
   const [kind, setKind] = useState<Kind>(offering?.kind ?? "package");
   const [credits, setCredits] = useState(offering?.credits ?? (kind === "package" ? 10 : 0));
@@ -121,7 +121,7 @@ export function OfferingForm({
       </fieldset>
 
       {kind === "one_time" ? (
-        <DigitalFileInput trainerId={trainerId} defaultPath={offering?.digital_file_path ?? null} defaultName={offering?.digital_file_name ?? null} />
+        <DigitalFileInput businessId={businessId} defaultPath={offering?.digital_file_path ?? null} defaultName={offering?.digital_file_name ?? null} />
       ) : null}
 
       <fieldset className="flex flex-col gap-2">
@@ -143,8 +143,8 @@ export function OfferingForm({
   );
 }
 
-/** Uploads a file straight to the private digital-products bucket (trainer folder). */
-function DigitalFileInput({ trainerId, defaultPath, defaultName }: { trainerId: string; defaultPath: string | null; defaultName: string | null }) {
+/** Uploads a file straight to the private digital-products bucket (business folder). */
+function DigitalFileInput({ businessId, defaultPath, defaultName }: { businessId: string; defaultPath: string | null; defaultName: string | null }) {
   const [path, setPath] = useState(defaultPath ?? "");
   const [name, setName] = useState(defaultName ?? defaultPath?.split("/").pop() ?? "");
   const [busy, setBusy] = useState(false);
@@ -159,7 +159,7 @@ function DigitalFileInput({ trainerId, defaultPath, defaultName }: { trainerId: 
     setBusy(true);
     setProgress(`Uploading ${file.name}…`);
     const safe = file.name.replace(/[^\w.\-]+/g, "-").slice(-100);
-    const objectPath = `${trainerId}/${crypto.randomUUID()}/${safe}`;
+    const objectPath = `${businessId}/${crypto.randomUUID()}/${safe}`;
     const { error: upErr } = await createClient()
       .storage.from("digital-products")
       .upload(objectPath, file, { contentType: file.type || "application/octet-stream", upsert: false });

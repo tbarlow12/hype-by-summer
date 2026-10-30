@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Card, CardTitle, EmptyState, PageHeader } from "@/components/ui";
 import { VideoUploadForm } from "@/components/comms/video-upload-form";
-import { getClientTrainerId, requireClient } from "@/lib/auth";
+import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/format";
 import { formatClock } from "@/lib/comms/policy";
@@ -9,18 +9,20 @@ import { formatClock } from "@/lib/comms/policy";
 export const metadata = { title: "Form checks" };
 
 export default async function ClientVideosPage() {
-  const profile = await requireClient();
-  const trainerId = await getClientTrainerId(profile.id);
+  const { profile, business } = await requireClient();
   const supabase = await createClient();
-  const [{ data: exercises }, { data: subs }] = await Promise.all([
-    supabase.from("exercises").select("id, name").order("name").limit(1000),
+  const [{ data: exercises }, { data: subs }, { data: rel }] = await Promise.all([
+    supabase.from("exercises").select("id, name").or(`business_id.is.null,business_id.eq.${business.id}`).order("name").limit(1000),
     supabase
       .from("video_submissions")
       .select("id, title, status, created_at, reviewed_at, duration_seconds, exercises(name), video_comments(count)")
+      .eq("business_id", business.id)
       .eq("client_id", profile.id)
       .neq("status", "archived")
       .order("created_at", { ascending: false }),
+    supabase.from("business_clients").select("status").eq("business_id", business.id).eq("client_id", profile.id).maybeSingle(),
   ]);
+  const canSend = Boolean(rel && rel.status !== "archived");
 
   return (
     <div>
@@ -28,10 +30,10 @@ export default async function ClientVideosPage() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <Card>
           <CardTitle className="mb-4">Send a new video</CardTitle>
-          {trainerId ? (
+          {canSend ? (
             <VideoUploadForm exercises={exercises ?? []} />
           ) : (
-            <p className="text-sm text-zinc-500">You&apos;ll be able to send form checks once you&apos;re connected with a coach.</p>
+            <p className="text-sm text-zinc-500">Form checks are available while you&apos;re training with {business.name}.</p>
           )}
         </Card>
         <div>

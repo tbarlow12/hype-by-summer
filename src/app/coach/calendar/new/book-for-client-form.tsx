@@ -6,18 +6,29 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/actions";
 import { SMS_CONSENT_LABEL } from "@/components/scheduling/booking-flow";
 
-type ClientOption = { id: string; name: string; phone: string | null; smsOptIn: boolean; credits: number };
-type TypeOption = { id: string; name: string; creditsRequired: number; free: boolean };
+type ClientOption = { id: string; name: string; phone: string | null; smsOptIn: boolean; credits: number; primaryCoachId: string | null };
+type TypeOption = { id: string; name: string; creditsRequired: number; free: boolean; coaches: { id: string; name: string }[] };
+
+/** The client's own coach, else me, else "any" (when they run the type). */
+function defaultCoach(type: TypeOption | undefined, client: ClientOption | undefined, selfId: string): string {
+  if (!type) return "any";
+  if (type.coaches.length === 1) return type.coaches[0]!.id;
+  if (client?.primaryCoachId && type.coaches.some((c) => c.id === client.primaryCoachId)) return client.primaryCoachId;
+  if (type.coaches.some((c) => c.id === selfId)) return selfId;
+  return "any";
+}
 
 export function BookForClientForm({
   clients,
   sessionTypes,
+  selfId,
   defaultClientId,
   today,
   action,
 }: {
   clients: ClientOption[];
   sessionTypes: TypeOption[];
+  selfId: string;
   defaultClientId?: string;
   today: string;
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
@@ -28,6 +39,8 @@ export function BookForClientForm({
   const [typeId, setTypeId] = useState(sessionTypes[0]?.id ?? "");
   const type = sessionTypes.find((t) => t.id === typeId);
   const [weeks, setWeeks] = useState(1);
+  const [coachChoice, setCoachChoice] = useState<string | null>(null);
+  const coach = coachChoice && (coachChoice === "any" || type?.coaches.some((c) => c.id === coachChoice)) ? coachChoice : defaultCoach(type, client, selfId);
 
   return (
     <ActionForm action={action} className="flex flex-col gap-4">
@@ -40,6 +53,7 @@ export function BookForClientForm({
             onChange={(e) => {
               setClientId(e.target.value);
               setPhone(clients.find((c) => c.id === e.target.value)?.phone ?? "");
+              setCoachChoice(null);
             }}
             required
           >
@@ -52,10 +66,29 @@ export function BookForClientForm({
           </Select>
         </Field>
         <Field label="Session type" htmlFor="session_type_id">
-          <Select id="session_type_id" name="session_type_id" value={typeId} onChange={(e) => setTypeId(e.target.value)} required>
+          <Select
+            id="session_type_id"
+            name="session_type_id"
+            value={typeId}
+            onChange={(e) => {
+              setTypeId(e.target.value);
+              setCoachChoice(null);
+            }}
+            required
+          >
             {sessionTypes.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Coach" htmlFor="coach" hint={coach === "any" ? "Each session goes to the first free coach (the client's own coach first)." : undefined}>
+          <Select id="coach" name="coach" value={coach} onChange={(e) => setCoachChoice(e.target.value)} required>
+            {type && type.coaches.length > 1 ? <option value="any">Any available coach</option> : null}
+            {(type?.coaches ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </Select>
@@ -94,7 +127,7 @@ export function BookForClientForm({
       <Field label="Notes (visible to the client)" htmlFor="notes">
         <Textarea id="notes" name="notes" maxLength={2000} />
       </Field>
-      <p className="text-xs text-zinc-500">Bookings skip your availability hours but never double-book or overlap time off. Conflicting weeks are skipped and listed.</p>
+      <p className="text-xs text-zinc-500">Bookings skip the coach's availability hours but never double-book the coach or overlap time off. Conflicting weeks are skipped and listed.</p>
       <div>
         <SubmitButton pendingLabel="Booking…">{weeks > 1 ? `Book ${weeks} sessions` : "Book session"}</SubmitButton>
       </div>

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { OfferingForm } from "@/components/payments/offering-form";
 import { ActionButton } from "@/components/payments/action-button";
-import { requireTrainer } from "@/lib/auth";
+import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isOfferingSynced } from "@/lib/payments/offerings";
 import { deleteOffering, resyncOffering, saveOffering } from "../actions";
@@ -11,13 +11,13 @@ import { deleteOffering, resyncOffering, saveOffering } from "../actions";
 export const metadata = { title: "Edit offering" };
 
 export default async function EditOfferingPage({ params }: PageProps<"/coach/offerings/[id]">) {
-  const trainer = await requireTrainer();
+  const { business } = await requireManager();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const supabase = await createClient();
   const [{ data: offering }, { data: sessionTypes }] = await Promise.all([
-    supabase.from("offerings").select("*").eq("id", id).eq("trainer_id", trainer.id).maybeSingle(),
-    supabase.from("session_types").select("id, name").eq("trainer_id", trainer.id).order("sort_order"),
+    supabase.from("offerings").select("*").eq("id", id).eq("business_id", business.id).maybeSingle(),
+    supabase.from("session_types").select("id, name").eq("business_id", business.id).order("sort_order"),
   ]);
   if (!offering) notFound();
   const synced = isOfferingSynced(offering);
@@ -55,7 +55,7 @@ export default async function EditOfferingPage({ params }: PageProps<"/coach/off
         </ActionButton>
       </Card>
       <Card>
-        <OfferingForm action={saveOffering} offering={offering} sessionTypes={sessionTypes ?? []} trainerId={trainer.id} />
+        <OfferingForm action={saveOffering} offering={offering} sessionTypes={sessionTypes ?? []} businessId={business.id} />
       </Card>
       <Card className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   dayLabel,
   fileExtension,
+  filterInbox,
   formatClock,
   isEmbeddableRoom,
   isOwnPath,
@@ -9,6 +10,7 @@ import {
   linkify,
   markerPercent,
   messagePreview,
+  messageSide,
   programDayFor,
   sessionClock,
   shouldEmailRecipient,
@@ -106,5 +108,30 @@ describe("live sessions", () => {
     expect(isEmbeddableRoom("https://hbs.daily.co/room")).toBe(true);
     expect(isEmbeddableRoom("https://evil.example.com/meet.jit.si")).toBe(false);
     expect(isEmbeddableRoom("javascript:alert(1)")).toBe(false);
+  });
+});
+
+describe("shared team threads", () => {
+  const rows = [
+    { id: 1, primary_coach_id: "coach-a", last_message_at: minsAgo(5), client_name: "Ana Lopez", client_email: "ana@example.com" },
+    { id: 2, primary_coach_id: "coach-b", last_message_at: minsAgo(9), client_name: "Ben Ode", client_email: "ben@example.com" },
+    { id: 3, primary_coach_id: null, last_message_at: minsAgo(1), client_name: null, client_email: "zoe@example.com" },
+    { id: 4, primary_coach_id: "coach-a", last_message_at: null, client_name: "Quiet Client", client_email: "q@example.com" },
+  ];
+  it("shows every thread with messages for the whole team", () => {
+    expect(filterInbox(rows, {}).map((r) => r.id)).toEqual([1, 2, 3]);
+  });
+  it("filters to my clients", () => {
+    expect(filterInbox(rows, { mineFor: "coach-a" }).map((r) => r.id)).toEqual([1]);
+    expect(filterInbox(rows, { mineFor: "coach-c" })).toEqual([]);
+  });
+  it("searches by name or email", () => {
+    expect(filterInbox(rows, { q: " ZOE " }).map((r) => r.id)).toEqual([3]);
+    expect(filterInbox(rows, { q: "ben", mineFor: "coach-a" })).toEqual([]);
+  });
+  it("tells which side wrote a message", () => {
+    expect(messageSide(null, "client")).toBe("system");
+    expect(messageSide("client", "client")).toBe("client");
+    expect(messageSide("coach-b", "client")).toBe("team");
   });
 });

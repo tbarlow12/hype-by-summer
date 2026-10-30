@@ -2,17 +2,19 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Alert, Badge, Card, buttonClass, cn } from "@/components/ui";
 import { CheckIcon, Section } from "@/components/marketing/sections";
-import { getProfile } from "@/lib/auth";
-import { BRAND_NAME } from "@/lib/env";
+import { getMembership, getProfile } from "@/lib/auth";
 import { priceLabel } from "@/lib/payments/format";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPrimaryTrainer } from "@/lib/trainer";
+import { getBusiness, requireBusiness } from "@/lib/tenant";
 import type { Tables } from "@/lib/supabase/database.types";
 
-export const metadata: Metadata = {
-  title: "Pricing",
-  description: `Session packs, memberships and programs from ${BRAND_NAME}.`,
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const business = await getBusiness();
+  return {
+    title: "Pricing",
+    description: business ? `Session packs, memberships and programs from ${business.name}.` : undefined,
+  };
+}
 
 type Offering = Tables<"offerings">;
 
@@ -41,23 +43,24 @@ const GROUPS: { kind: Offering["kind"]; eyebrow: string; title: string; intro: s
 ];
 
 export default async function PricingPage({ searchParams }: PageProps<"/pricing">) {
+  const business = await requireBusiness();
   const { error } = await searchParams;
-  const [trainer, profile] = await Promise.all([getPrimaryTrainer(), getProfile()]);
+  const [profile, membership] = await Promise.all([getProfile(), getMembership()]);
+  // Public page: service role, always scoped to the business this site belongs to.
   const admin = createAdminClient();
-  const [{ data: offerings }, { data: sessionTypes }] = trainer
-    ? await Promise.all([
-        admin
-          .from("offerings")
-          .select("id, kind, name, description, features, price_cents, currency, billing_interval, interval_count, trial_days, credits, credits_expire_days, session_type_ids, includes_messaging, includes_programming, featured, sort_order, digital_file_path")
-          .eq("trainer_id", trainer.trainer_id)
-          .eq("active", true)
-          .order("sort_order")
-          .order("price_cents"),
-        admin.from("session_types").select("id, name").eq("trainer_id", trainer.trainer_id),
-      ])
-    : [{ data: [] }, { data: [] }];
+  const [{ data: offerings }, { data: sessionTypes }] = await Promise.all([
+    admin
+      .from("offerings")
+      .select("id, kind, name, description, features, price_cents, currency, billing_interval, interval_count, trial_days, credits, credits_expire_days, session_type_ids, includes_messaging, includes_programming, featured, sort_order, digital_file_path")
+      .eq("business_id", business.id)
+      .eq("active", true)
+      .order("sort_order")
+      .order("price_cents"),
+    admin.from("session_types").select("id, name").eq("business_id", business.id),
+  ]);
   const typeNames = new Map((sessionTypes ?? []).map((s) => [s.id, s.name]));
-  const isCoach = profile && profile.role !== "client";
+  const isStaff = Boolean(membership);
+  const canSell = Boolean(business.stripe_account_id && business.stripe_charges_enabled);
 
   return (
     <>
@@ -67,11 +70,9 @@ export default async function PricingPage({ searchParams }: PageProps<"/pricing"
         intro={
           <>
             Single sessions can always be booked directly.{" "}
-            {trainer ? (
-              <Link href={`/book/${trainer.slug}`} className="font-semibold text-brand hover:underline">
-                See the booking calendar →
-              </Link>
-            ) : null}
+            <Link href="/book" className="font-semibold text-brand hover:underline">
+              See the booking calendar →
+            </Link>
           </>
         }
         className="pb-0 sm:pb-0"
@@ -81,11 +82,17 @@ export default async function PricingPage({ searchParams }: PageProps<"/pricing"
             <Alert tone="red">{error}</Alert>
           </div>
         ) : null}
-        {isCoach ? (
+        {isStaff ? (
           <div className="mb-6">
             <Alert tone="amber">
-              You&apos;re signed in as the coach. This is how clients see your offerings.{" "}
+              You&apos;re signed in as staff. This is how clients see your offerings.{" "}
               <Link href="/coach/offerings" className="font-semibold underline">Manage offerings</Link>
+              {!canSell ? (
+                <>
+                  {" "}Online checkout is off until Stripe is connected:{" "}
+                  <Link href="/coach/payments/setup" className="font-semibold underline">Set up payments</Link>
+                </>
+              ) : null}
             </Alert>
           </div>
         ) : null}
@@ -93,11 +100,9 @@ export default async function PricingPage({ searchParams }: PageProps<"/pricing"
           <Card className="p-8 text-center">
             <p className="font-semibold">Packages and memberships are coming soon.</p>
             <p className="mt-1 text-sm text-zinc-500">In the meantime, book a session or a free consult and we&apos;ll find the right fit together.</p>
-            {trainer ? (
-              <Link href={`/book/${trainer.slug}`} className={buttonClass("primary", "md", "mt-4")}>
-                Book a session
-              </Link>
-            ) : null}
+            <Link href="/book" className={buttonClass("primary", "md", "mt-4")}>
+              Book a session
+            </Link>
           </Card>
         ) : null}
       </Section>
@@ -163,14 +168,20 @@ export default async function PricingPage({ searchParams }: PageProps<"/pricing"
                       </ul>
                     ) : null}
                     <div className="mt-auto pt-2">
-                      {/* Plain anchor: this hits a route handler that starts checkout (no prefetch). */}
-                      <a
-                        href={`/checkout/start?offering=${o.id}`}
-                        className={buttonClass(o.featured ? "primary" : "secondary", "lg", "w-full")}
-                      >
-                        {o.kind === "subscription" && o.trial_days > 0 ? "Start free trial" : g.cta}
-                      </a>
-                      {!profile ? <p className="mt-2 text-center text-xs text-zinc-500">You&apos;ll create a free account first.</p> : null}
+                      {canSell ? (
+                        <>
+                          {/* Plain anchor: this hits a route handler that starts checkout (no prefetch). */}
+                          <a
+                            href={`/checkout/start?offering=${o.id}`}
+                            className={buttonClass(o.featured ? "primary" : "secondary", "lg", "w-full")}
+                          >
+                            {o.kind === "subscription" && o.trial_days > 0 ? "Start free trial" : g.cta}
+                          </a>
+                          {!profile ? <p className="mt-2 text-center text-xs text-zinc-500">You&apos;ll create a free account first.</p> : null}
+                        </>
+                      ) : (
+                        <p className="text-center text-sm text-zinc-500">Online checkout opens soon.</p>
+                      )}
                     </div>
                   </Card>
                 );

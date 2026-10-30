@@ -1,5 +1,5 @@
 import { ActionForm, SubmitButton } from "@/components/form";
-import { Alert, Card, Field, Input, PageHeader, Textarea } from "@/components/ui";
+import { Alert, Card, EmptyState, Field, Input, PageHeader, Textarea } from "@/components/ui";
 import { Sparkline } from "@/components/charts";
 import { CheckInCard } from "@/components/training/check-in-card";
 import { requireClient } from "@/lib/auth";

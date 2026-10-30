@@ -3,16 +3,14 @@ import { notFound } from "next/navigation";
 import { LeadMagnetForm } from "@/components/lead-magnet-form";
 import { CheckIcon, GuideCover, Stars } from "@/components/marketing/sections";
 import { Avatar } from "@/components/ui";
-import { BRAND_NAME } from "@/lib/env";
-import { coachName, getActiveMagnetBySlug, getApprovedTestimonials } from "@/lib/marketing";
-import { getTrainerBySlug } from "@/lib/trainer";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getActiveMagnetBySlug, getApprovedTestimonials, getSiteContext } from "@/lib/marketing";
 
 export async function generateMetadata({ params }: PageProps<"/free/[slug]">): Promise<Metadata> {
   const { slug } = await params;
-  const magnet = await getActiveMagnetBySlug(slug);
+  const { business } = await getSiteContext();
+  const magnet = await getActiveMagnetBySlug(business.id, slug);
   if (!magnet) return { title: "Guide not found", robots: { index: false } };
-  const description = magnet.subtitle ?? magnet.description?.slice(0, 160) ?? `A free guide from ${BRAND_NAME}.`;
+  const description = magnet.subtitle ?? magnet.description?.slice(0, 160) ?? `A free guide from ${business.name}.`;
   return {
     title: `${magnet.title} (free guide)`,
     description,
@@ -26,21 +24,22 @@ export async function generateMetadata({ params }: PageProps<"/free/[slug]">): P
   };
 }
 
-async function trainerFor(trainerId: string) {
-  const { data } = await createAdminClient().from("trainer_profiles").select("slug").eq("trainer_id", trainerId).maybeSingle();
-  return data ? getTrainerBySlug(data.slug) : null;
-}
-
 export default async function LeadMagnetPage({ params }: PageProps<"/free/[slug]">) {
   const { slug } = await params;
-  const magnet = await getActiveMagnetBySlug(slug);
+  const { business, coaches } = await getSiteContext();
+  const magnet = await getActiveMagnetBySlug(business.id, slug);
   if (!magnet) notFound();
-  const [trainer, testimonials] = await Promise.all([trainerFor(magnet.trainer_id), getApprovedTestimonials(magnet.trainer_id)]);
+  const testimonials = await getApprovedTestimonials(business.id);
+  // Solo business: credit the coach; teams: credit the business.
+  const author =
+    coaches.length === 1
+      ? { name: coaches[0]!.name, avatar: coaches[0]!.avatarUrl, note: coaches[0]!.title ?? business.certifications[0] ?? null }
+      : { name: business.name, avatar: business.logo_url, note: null };
   const quote = testimonials.find((t) => t.body.length < 280) ?? null;
 
   return (
     <div className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[32rem] bg-gradient-to-b from-rose-50 to-transparent dark:from-rose-950/30" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[32rem] bg-gradient-to-b from-brand/10 to-transparent dark:from-brand/15" aria-hidden="true" />
       <div className="mx-auto grid max-w-6xl gap-12 px-4 py-12 sm:px-6 sm:py-20 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
         <div>
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-brand">Free guide</p>
@@ -76,18 +75,19 @@ export default async function LeadMagnetPage({ params }: PageProps<"/free/[slug]
             <h2 className="text-2xl font-black tracking-tight">Where should we send it?</h2>
             <p className="mt-1 text-sm text-zinc-500">Instant download, plus a copy in your inbox.</p>
             <div className="mt-6">
-              <LeadMagnetForm magnet={{ id: magnet.id, cta_label: magnet.cta_label, ask_phone: magnet.ask_phone, ask_goal: magnet.ask_goal }} />
+              <LeadMagnetForm
+                magnet={{ id: magnet.id, cta_label: magnet.cta_label, ask_phone: magnet.ask_phone, ask_goal: magnet.ask_goal }}
+                brandName={business.name}
+              />
             </div>
           </div>
-          {trainer ? (
-            <div className="mt-6 flex items-center gap-3 px-2">
-              <Avatar name={coachName(trainer).full} src={trainer.profiles?.avatar_url} size={44} />
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                Created by <span className="font-semibold text-zinc-900 dark:text-zinc-100">{coachName(trainer).full}</span>
-                {trainer.certifications[0] ? `, ${trainer.certifications[0]}` : ""}
-              </p>
-            </div>
-          ) : null}
+          <div className="mt-6 flex items-center gap-3 px-2">
+            <Avatar name={author.name} src={author.avatar} size={44} />
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Created by <span className="font-semibold text-zinc-900 dark:text-zinc-100">{author.name}</span>
+              {author.note ? `, ${author.note}` : ""}
+            </p>
+          </div>
           {quote ? (
             <figure className="mt-6 rounded-2xl bg-zinc-50 p-5 dark:bg-zinc-900/60">
               {quote.rating ? <Stars rating={quote.rating} /> : null}

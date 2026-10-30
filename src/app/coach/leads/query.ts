@@ -1,15 +1,24 @@
 import "server-only";
 import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
 import { createClient } from "@/lib/supabase/server";
-import { dueWindow, type LeadFilters } from "@/lib/leads/filters";
+import { dueWindow, type LeadFilters, type OwnerFilter } from "@/lib/leads/filters";
 
-/** Leads for the signed-in trainer matching the CRM filters (RLS-scoped). */
-export async function fetchLeads(trainerId: string, filters: LeadFilters, timeZone: string, opts: { limit?: number } = {}) {
+export type LeadScope = { businessId: string; userId: string; owner: OwnerFilter };
+
+/** Applies the owner scope ("mine" / "all" / "unassigned") to a leads query. */
+export function scoped<Q extends { eq(c: "assigned_coach_id", v: string): Q; is(c: "assigned_coach_id", v: null): Q }>(
+  query: Q,
+  scope: Pick<LeadScope, "userId" | "owner">,
+): Q {
+  if (scope.owner === "mine") return query.eq("assigned_coach_id", scope.userId);
+  if (scope.owner === "unassigned") return query.is("assigned_coach_id", null);
+  return query;
+}
+
+/** Leads of the current business matching the CRM filters and owner scope (RLS + explicit business filter). */
+export async function fetchLeads(scope: LeadScope, filters: LeadFilters, timeZone: string, opts: { limit?: number } = {}) {
   const supabase = await createClient();
-  let query = supabase
-    .from("leads")
-    .select("*")
-    .eq("trainer_id", trainerId);
+  let query = scoped(supabase.from("leads").select("*").eq("business_id", scope.businessId), scope);
 
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.source) query = query.eq("source", filters.source);

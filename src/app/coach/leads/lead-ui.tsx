@@ -58,11 +58,14 @@ export function LeadCard({
   lead,
   timeZone,
   magnetTitle,
+  assignee,
   footer,
 }: {
   lead: LeadRow;
   timeZone: string;
   magnetTitle?: string;
+  /** Who the lead is assigned to (shown in team views). */
+  assignee?: string | null;
   footer?: React.ReactNode;
 }) {
   return (
@@ -81,6 +84,11 @@ export function LeadCard({
       </p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <FollowUp at={lead.next_follow_up_at} timeZone={timeZone} />
+        {assignee !== undefined ? (
+          <span className={cn("text-xs font-medium", assignee ? "text-zinc-600 dark:text-zinc-300" : "text-amber-600 dark:text-amber-400")}>
+            {assignee ?? "Unassigned"}
+          </span>
+        ) : null}
         <span className="ml-auto text-xs text-zinc-400">{formatDistanceToNowStrict(new Date(lead.created_at), { addSuffix: true })}</span>
       </div>
       {footer}

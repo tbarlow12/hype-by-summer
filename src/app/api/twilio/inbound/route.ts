@@ -6,7 +6,7 @@ import { notify } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
-// Configure in Twilio: Phone number → Messaging → "A message comes in" → POST {SITE_URL}/api/twilio/inbound
+// Configure in Twilio: Phone number → Messaging → "A message comes in" → POST <platform URL>/api/twilio/inbound
 export async function POST(req: NextRequest) {
   const params = await verifiedTwilioParams(req, "/api/twilio/inbound");
   if (!params) return new Response("invalid signature", { status: 403 });
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
   if (kind === "stop") {
     await admin.from("sms_opt_outs").upsert({ phone: from });
-    await admin.from("profiles").update({ sms_opt_in: false }).eq("phone", params.From);
+    await admin.from("profiles").update({ sms_opt_in: false }).in("phone", [...new Set([params.From, from].filter(Boolean))]);
     return twiml(); // Twilio's Advanced Opt-Out sends the carrier-required confirmation.
   }
   if (kind === "start") {
@@ -30,8 +30,8 @@ export async function POST(req: NextRequest) {
     return twiml("Session reminders from your trainer. Reply STOP to opt out. Questions? Message your coach in the app.");
   }
 
-  // Anything else: forward to the trainer so replies aren't lost.
-  // Route the reply to the business that last texted this number.
+  // Anything else: forward to the managers of the business that last texted
+  // this number, so replies aren't lost.
   const { data: last } = await admin
     .from("sms_messages")
     .select("business_id")

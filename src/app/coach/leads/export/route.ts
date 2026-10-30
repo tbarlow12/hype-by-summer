@@ -1,25 +1,33 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { formatInTimeZone } from "date-fns-tz";
-import { requireTrainer } from "@/lib/auth";
+import { isManager, requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { toCsv, type CsvColumn } from "@/lib/leads/csv";
-import { parseLeadFilters } from "@/lib/leads/filters";
+import { ownerScope, parseLeadFilters } from "@/lib/leads/filters";
 import type { Tables } from "@/lib/supabase/database.types";
 import { fetchLeads } from "../query";
 
 type Lead = Tables<"leads">;
 
-// GET /coach/leads/export?…filters — CSV of the trainer's leads (RLS-scoped).
+// GET /coach/leads/export?…filters — CSV of the current business's leads in
+// the same owner scope as the CRM view (RLS + explicit business filter).
 export async function GET(request: NextRequest) {
-  const trainer = await requireTrainer();
+  const { profile, business, membership } = await requireStaff();
   const filters = parseLeadFilters(request.nextUrl.searchParams);
-  const [{ data, error }, { data: magnets }] = await Promise.all([
-    fetchLeads(trainer.id, filters, trainer.timezone, { limit: 10000 }),
-    (await createClient()).from("lead_magnets").select("id, title").eq("trainer_id", trainer.id),
+  const supabase = await createClient();
+  const scope = { businessId: business.id, userId: profile.id, owner: ownerScope(filters, isManager(membership)) };
+  const [{ data, error }, { data: magnets }, { data: team }] = await Promise.all([
+    fetchLeads(scope, filters, profile.timezone, { limit: 10000 }),
+    supabase.from("lead_magnets").select("id, title").eq("business_id", business.id),
+    supabase
+      .from("business_members")
+      .select("user_id, profiles!business_members_user_id_fkey(full_name, email)")
+      .eq("business_id", business.id),
   ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const magnetTitle = new Map((magnets ?? []).map((m) => [m.id, m.title]));
-  const tz = trainer.timezone;
+  const coachName = new Map((team ?? []).map((m) => [m.user_id, m.profiles?.full_name || m.profiles?.email || ""]));
+  const tz = profile.timezone;
   const when = (v: string | null) => (v ? formatInTimeZone(v, tz, "yyyy-MM-dd HH:mm") : "");
 
   const columns: CsvColumn<Lead>[] = [
@@ -29,6 +37,7 @@ export async function GET(request: NextRequest) {
     { header: "Phone", value: (l) => l.phone },
     { header: "Status", value: (l) => l.status },
     { header: "Score", value: (l) => l.score },
+    { header: "Assigned to", value: (l) => (l.assigned_coach_id ? coachName.get(l.assigned_coach_id) : "") },
     { header: "Source", value: (l) => l.source },
     { header: "Lead magnet", value: (l) => (l.lead_magnet_id ? magnetTitle.get(l.lead_magnet_id) : "") },
     { header: "Primary goal", value: (l) => l.primary_goal },

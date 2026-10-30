@@ -1,6 +1,5 @@
 import "server-only";
 import { serverEnv } from "@/lib/env.server";
-import { BRAND_NAME } from "@/lib/env";
 
 /**
  * Creates a video room for a virtual session. Jitsi needs no account (good
@@ -14,7 +13,7 @@ export async function createVideoRoom(opts: { bookingId: string; endsAt: string 
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: `hbs-${opts.bookingId.slice(0, 18)}`,
+        name: `s-${opts.bookingId.slice(0, 18)}`,
         privacy: "public",
         properties: {
           exp: Math.floor(new Date(opts.endsAt).getTime() / 1000) + 60 * 60,
@@ -29,6 +28,6 @@ export async function createVideoRoom(opts: { bookingId: string; endsAt: string 
     }
     console.error("[video] Daily room creation failed", res.status, await res.text());
   }
-  const slug = BRAND_NAME.replace(/[^a-z0-9]/gi, "");
-  return `https://meet.jit.si/${slug}-${opts.bookingId}`;
+  // Brand-neutral, unguessable room name (white-label: no business or platform name).
+  return `https://meet.jit.si/session-${opts.bookingId}`;
 }

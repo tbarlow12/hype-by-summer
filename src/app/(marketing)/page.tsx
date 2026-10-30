@@ -65,6 +65,8 @@ export default async function HomePage() {
   const portrait = solo ? (lead?.avatarUrl ?? null) : null;
   const bioText = business.bio ?? (solo ? lead?.bio : null) ?? "";
   const bioParagraphs = bioText.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  // The solo coach's own bio, else the business's.
+  const coachBio = lead?.bio ? lead.bio.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean) : bioParagraphs;
   const where = business.default_location ?? "In person & online";
   const specialties = business.specialties.length ? business.specialties : solo ? (lead?.specialties ?? []) : [];
   const I = solo ? "I" : "we";
@@ -393,8 +395,8 @@ export default async function HomePage() {
               <h2 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">Hi, I&apos;m {who}.</h2>
               {lead?.title ? <p className="mt-2 text-lg font-semibold text-zinc-500">{lead.title}</p> : null}
               <div className="mt-6 space-y-4 text-lg text-zinc-700 dark:text-zinc-300">
-                {(lead?.bio ? lead.bio.split(/\n{2,}/) : bioParagraphs).length ? (
-                  (lead?.bio ? lead.bio.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean) : bioParagraphs).map((p) => <p key={p.slice(0, 40)}>{p}</p>)
+                {coachBio.length ? (
+                  coachBio.map((p) => <p key={p.slice(0, 40)}>{p}</p>)
                 ) : (
                   <p>
                     I help busy people get stronger, move better and build habits that last, without living in the gym or
@@ -506,10 +508,7 @@ export default async function HomePage() {
             <Link href={consult} className={buttonClass("white", "lg")}>
               {consultType ? "Book a free consult" : "Book a session"}
             </Link>
-            <Link
-              href="#contact"
-              className="inline-flex h-12 items-center justify-center rounded-full border border-current px-6 text-base font-semibold text-on-brand opacity-90 transition-opacity hover:opacity-100"
-            >
+            <Link href="#contact" className={buttonClass("inverse", "lg", "border-current! bg-transparent! text-on-brand! hover:bg-black/10!")}>
               Ask a question
             </Link>
           </div>

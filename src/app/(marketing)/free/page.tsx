@@ -2,15 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Alert, EmptyState, LinkButton } from "@/components/ui";
 import { CheckIcon, GuideCover } from "@/components/marketing/sections";
-import { BRAND_NAME } from "@/lib/env";
 import { getSiteContext } from "@/lib/marketing";
 
-export const metadata: Metadata = {
-  title: "Free guides",
-  description: `Free workout plans, nutrition guides and trackers from ${BRAND_NAME}. Download instantly.`,
-  alternates: { canonical: "/free" },
-  openGraph: { title: `Free guides · ${BRAND_NAME}`, url: "/free" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { business } = await getSiteContext();
+  return {
+    title: "Free guides",
+    description: `Free workout plans, nutrition guides and trackers from ${business.name}. Download instantly.`,
+    alternates: { canonical: "/free" },
+    openGraph: { title: `Free guides · ${business.name}`, url: "/free" },
+  };
+}
 
 const DOWNLOAD_ERRORS: Record<string, string> = {
   expired: "That download link has expired. Request the guide again below and we'll send you a fresh link.",

@@ -31,7 +31,7 @@ function embedUrl(url: string, displayName: string): string {
 
 export function LiveRoom({
   bookingId,
-  isTrainer,
+  isStaff,
   viewerName,
   title,
   when,
@@ -45,7 +45,7 @@ export function LiveRoom({
   workout,
 }: {
   bookingId: string;
-  isTrainer: boolean;
+  isStaff: boolean;
   viewerName: string;
   title: string;
   when: string;
@@ -152,7 +152,7 @@ export function LiveRoom({
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
               {error ? <Alert tone="red">{error}</Alert> : null}
-              {isTrainer ? (
+              {isStaff ? (
                 <>
                   <p className="text-zinc-300">There&apos;s no video room for this session yet.</p>
                   <Button

@@ -8,9 +8,9 @@ import { DeleteVideoButton } from "@/components/comms/delete-video-button";
 export const metadata = { title: "Form check" };
 
 export default async function ClientVideoPage({ params }: PageProps<"/me/videos/[id]">) {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const { id } = await params;
-  const data = await loadSubmission(id);
+  const data = await loadSubmission(id, business.id);
   if (!data || data.submission.client_id !== profile.id) notFound();
 
   return (
@@ -27,8 +27,9 @@ export default async function ClientVideoPage({ params }: PageProps<"/me/videos/
         initialComments={data.comments}
         people={data.people}
         viewerId={profile.id}
-        isTrainer={false}
+        isStaff={false}
         timezone={profile.timezone}
+        reviewedBy={data.submission.reviewed_by ? (data.people[data.submission.reviewed_by]?.name ?? null) : null}
       />
     </div>
   );

@@ -1,19 +1,19 @@
 import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui";
 import { OfferingForm } from "@/components/payments/offering-form";
-import { requireTrainer } from "@/lib/auth";
+import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { saveOffering } from "../actions";
 
 export const metadata = { title: "New offering" };
 
 export default async function NewOfferingPage() {
-  const trainer = await requireTrainer();
+  const { business } = await requireManager();
   const supabase = await createClient();
   const { data: sessionTypes } = await supabase
     .from("session_types")
     .select("id, name")
-    .eq("trainer_id", trainer.id)
+    .eq("business_id", business.id)
     .eq("active", true)
     .order("sort_order");
 
@@ -24,9 +24,9 @@ export default async function NewOfferingPage() {
           ← Packages & plans
         </Link>
       </p>
-      <PageHeader title="New offering" description="It's created in Stripe as a product with a price when you save." />
+      <PageHeader title="New offering" description="It's created in your Stripe account as a product with a price when you save." />
       <Card>
-        <OfferingForm action={saveOffering} sessionTypes={sessionTypes ?? []} trainerId={trainer.id} />
+        <OfferingForm action={saveOffering} sessionTypes={sessionTypes ?? []} businessId={business.id} />
       </Card>
     </div>
   );

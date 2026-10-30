@@ -15,7 +15,13 @@ export async function ensureClientLinked(profile: Tables<"profiles">, businessId
     .eq("business_id", businessId)
     .eq("client_id", profile.id)
     .maybeSingle();
-  if (existing) return;
+  if (existing) {
+    // Added by staff ("invited"): their first sign-in makes them active.
+    if (existing.status === "invited") {
+      await admin.from("business_clients").update({ status: "active" }).eq("business_id", businessId).eq("client_id", profile.id);
+    }
+    return;
+  }
 
   await admin
     .from("business_clients")

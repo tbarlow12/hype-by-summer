@@ -5,6 +5,7 @@ import { bestStreak, countInWeek, currentStreak, goalProgress } from "./habits";
 import { buildPrefill, parseDurationTarget, parseLoad, parseRepTarget } from "./prefill";
 import { computePersonalRecords, epley1RM, recentPRs, type LoggedSet } from "./records";
 import { parseVideoUrl } from "./video";
+import { exerciseUsableBy, inboxScope, responsibleCoachIds, type StaffMember } from "./routing";
 
 describe("epley1RM", () => {
   it("estimates a one-rep max", () => {
@@ -193,5 +194,51 @@ describe("adherenceToDate", () => {
   });
   it("is null before anything is due", () => {
     expect(adherenceToDate([{ id: "x", week: 1, day: 2 }], [], { week: 1, day: 1 })).toBeNull();
+  });
+});
+
+describe("responsibleCoachIds", () => {
+  const members: StaffMember[] = [
+    { user_id: "owner", role: "owner", active: true },
+    { user_id: "admin", role: "admin", active: true },
+    { user_id: "coach-a", role: "coach", active: true },
+    { user_id: "coach-b", role: "coach", active: true },
+    { user_id: "gone", role: "coach", active: false },
+    { user_id: "old-admin", role: "admin", active: false },
+  ];
+  it("prefers the program's coach", () => {
+    expect(responsibleCoachIds({ programCoachId: "coach-a", primaryCoachId: "coach-b", members })).toEqual(["coach-a"]);
+  });
+  it("falls back to the client's primary coach", () => {
+    expect(responsibleCoachIds({ programCoachId: null, primaryCoachId: "coach-b", members })).toEqual(["coach-b"]);
+    expect(responsibleCoachIds({ programCoachId: "gone", primaryCoachId: "coach-b", members })).toEqual(["coach-b"]);
+  });
+  it("falls back to active owners and admins", () => {
+    expect(responsibleCoachIds({ programCoachId: "gone", primaryCoachId: "stranger", members }).sort()).toEqual(["admin", "owner"]);
+    expect(responsibleCoachIds({ members }).sort()).toEqual(["admin", "owner"]);
+  });
+  it("never routes to someone outside the business", () => {
+    expect(responsibleCoachIds({ programCoachId: "stranger", members: [] })).toEqual([]);
+  });
+});
+
+describe("exerciseUsableBy", () => {
+  it("allows global and own exercises only", () => {
+    expect(exerciseUsableBy({ business_id: null }, "b1")).toBe(true);
+    expect(exerciseUsableBy({ business_id: "b1" }, "b1")).toBe(true);
+    expect(exerciseUsableBy({ business_id: "b2" }, "b1")).toBe(false);
+  });
+});
+
+describe("inboxScope", () => {
+  it("defaults coaches to their clients and managers to everyone", () => {
+    expect(inboxScope(undefined, false)).toBe("mine");
+    expect(inboxScope(undefined, true)).toBe("all");
+  });
+  it("honours an explicit toggle", () => {
+    expect(inboxScope("all", false)).toBe("all");
+    expect(inboxScope("mine", true)).toBe("mine");
+    expect(inboxScope("bogus", false)).toBe("mine");
+    expect(inboxScope(["all"], false)).toBe("mine");
   });
 });

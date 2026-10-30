@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ActionForm, SubmitButton } from "@/components/form";
 import { Alert, Card, LinkButton } from "@/components/ui";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { BRAND_NAME } from "@/lib/env";
+import { requireBusiness } from "@/lib/tenant";
 import { unsubscribeAction } from "../../actions";
 
 export const metadata: Metadata = {
@@ -12,10 +12,18 @@ export const metadata: Metadata = {
 
 export default async function UnsubscribePage({ params }: PageProps<"/unsubscribe/[token]">) {
   const { token } = await params;
+  const business = await requireBusiness();
   const valid = /^[0-9a-f]{20,80}$/i.test(token);
+  // Only this business's leads: a token from another business's email is "invalid" here.
   const { data: lead } = valid
-    ? await createAdminClient().from("leads").select("email, unsubscribed_at").eq("unsubscribe_token", token).maybeSingle()
+    ? await createAdminClient()
+        .from("leads")
+        .select("email, unsubscribed_at")
+        .eq("unsubscribe_token", token)
+        .eq("business_id", business.id)
+        .maybeSingle()
     : { data: null };
+  const name = business.name;
 
   return (
     <div className="px-4 py-16 sm:py-24">
@@ -25,16 +33,16 @@ export default async function UnsubscribePage({ params }: PageProps<"/unsubscrib
           <div className="mt-6 space-y-4">
             <Alert tone="amber">This unsubscribe link is invalid or has expired.</Alert>
             <LinkButton href="/" variant="outline">
-              Back to {BRAND_NAME}
+              Back to {name}
             </LinkButton>
           </div>
         ) : lead.unsubscribed_at ? (
           <div className="mt-6 space-y-4">
             <Alert tone="green">
-              {maskEmail(lead.email)} is unsubscribed. You won&apos;t receive marketing emails from {BRAND_NAME}.
+              {maskEmail(lead.email)} is unsubscribed. You won&apos;t receive marketing emails from {name}.
             </Alert>
             <LinkButton href="/" variant="outline">
-              Back to {BRAND_NAME}
+              Back to {name}
             </LinkButton>
           </div>
         ) : (

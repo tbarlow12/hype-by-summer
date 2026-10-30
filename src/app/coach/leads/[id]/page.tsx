@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import { Alert, Badge, Card, CardTitle, LinkButton } from "@/components/ui";
-import { requireTrainer } from "@/lib/auth";
+import { isManager, requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDateTime, titleCase } from "@/lib/format";
@@ -13,6 +13,7 @@ import type { Json } from "@/lib/supabase/database.types";
 import { ScoreBadge, StatusBadge, leadName, sourceLabel } from "../lead-ui";
 import {
   addLeadNote,
+  assignLead,
   changeLeadStatus,
   deleteLead,
   emailLead,
@@ -21,7 +22,7 @@ import {
   setFollowUp,
   updateLeadDetails,
 } from "../actions";
-import { DeleteLeadForm, EmailForm, FollowUpForm, InviteForm, LeadDetailsForm, LostForm, NoteForm, StatusForm } from "./lead-forms";
+import { AssignForm, DeleteLeadForm, EmailForm, FollowUpForm, InviteForm, LeadDetailsForm, LostForm, NoteForm, StatusForm } from "./lead-forms";
 
 export const metadata: Metadata = { title: "Lead" };
 
@@ -88,27 +89,32 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default async function LeadDetailPage({ params }: PageProps<"/coach/leads/[id]">) {
   const { id } = await params;
-  const trainer = await requireTrainer();
+  const { profile, business, membership } = await requireStaff();
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const supabase = await createClient();
-  const { data: lead } = await supabase.from("leads").select("*").eq("id", id).eq("trainer_id", trainer.id).maybeSingle();
+  const { data: lead } = await supabase.from("leads").select("*").eq("id", id).eq("business_id", business.id).maybeSingle();
   if (!lead) notFound();
 
-  const tz = trainer.timezone;
-  const [{ data: events }, { data: bookings }, { data: magnet }, { data: account }, { data: storefront }] = await Promise.all([
+  const tz = profile.timezone;
+  const manager = isManager(membership);
+  const admin = createAdminClient();
+  const [{ data: events }, { data: bookings }, { data: magnet }, { data: account }, { data: team }] = await Promise.all([
     supabase.from("lead_events").select("*, profiles:created_by(full_name)").eq("lead_id", lead.id).order("created_at", { ascending: false }).limit(200),
     supabase
       .from("bookings")
       .select("id, starts_at, status, session_types(name, is_consultation)")
-      .eq("trainer_id", trainer.id)
+      .eq("business_id", business.id)
       .or(`lead_id.eq.${lead.id},guest_email.eq."${lead.email.replace(/"/g, "")}"${lead.converted_client_id ? `,client_id.eq.${lead.converted_client_id}` : ""}`)
       .order("starts_at", { ascending: false })
       .limit(20),
     lead.lead_magnet_id
-      ? supabase.from("lead_magnets").select("id, title, slug").eq("id", lead.lead_magnet_id).maybeSingle()
+      ? supabase.from("lead_magnets").select("id, title, slug").eq("id", lead.lead_magnet_id).eq("business_id", business.id).maybeSingle()
       : Promise.resolve({ data: null }),
-    createAdminClient().from("profiles").select("id, role").eq("email", lead.email).maybeSingle(),
-    supabase.from("trainer_profiles").select("business_name").eq("trainer_id", trainer.id).maybeSingle(),
+    admin.from("profiles").select("id").eq("email", lead.email).maybeSingle(),
+    admin
+      .from("business_members")
+      .select("user_id, active, profiles!business_members_user_id_fkey(full_name, email)")
+      .eq("business_id", business.id),
   ]);
 
   const types = (events ?? []).map((e) => e.type);
@@ -122,8 +128,32 @@ export default async function LeadDetailPage({ params }: PageProps<"/coach/leads
   const invited = types.includes("invited");
   const lastTouch = (lead.last_touch && typeof lead.last_touch === "object" && !Array.isArray(lead.last_touch) ? lead.last_touch : {}) as Record<string, string>;
   const followUpValue = lead.next_follow_up_at ? formatInTimeZone(lead.next_follow_up_at, tz, "yyyy-MM-dd'T'HH:mm") : "";
-  const signature = `${trainer.full_name ?? ""}${storefront?.business_name ? `\n${storefront.business_name}` : ""}`.trim();
-  const isClientAccount = account?.role === "client";
+  const signature = `${profile.full_name ?? ""}\n${business.name}`.trim();
+  const members = team ?? [];
+  const nameOf = (userId: string) => {
+    const m = members.find((t) => t.user_id === userId);
+    return m?.profiles?.full_name || m?.profiles?.email || "Former teammate";
+  };
+  // An account that's on this team can't become a client here.
+  const isStaffAccount = Boolean(account && members.some((m) => m.user_id === account.id));
+  const isClientAccount = Boolean(account && !isStaffAccount);
+  const assignee = lead.assigned_coach_id;
+  const assignOptions: { value: string; label: string }[] = manager
+    ? [
+        { value: "", label: "Unassigned" },
+        ...members.filter((m) => m.active || m.user_id === assignee).map((m) => ({ value: m.user_id, label: nameOf(m.user_id) })),
+      ]
+    : assignee === null
+      ? [
+          { value: "", label: "Unassigned" },
+          { value: profile.id, label: `${nameOf(profile.id)} (me)` },
+        ]
+      : assignee === profile.id
+        ? [
+            { value: profile.id, label: `${nameOf(profile.id)} (me)` },
+            { value: "", label: "Unassigned" },
+          ]
+        : [];
 
   return (
     <div className="space-y-6">
@@ -217,6 +247,16 @@ export default async function LeadDetailPage({ params }: PageProps<"/coach/leads
           <Card>
             <CardTitle>Pipeline</CardTitle>
             <div className="mt-4 space-y-5">
+              {members.length > 1 || assignee !== profile.id ? (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500">Assigned to</p>
+                  {assignOptions.length ? (
+                    <AssignForm action={assignLead.bind(null, lead.id)} value={assignee} options={assignOptions} />
+                  ) : (
+                    <p className="text-sm font-medium">{assignee ? nameOf(assignee) : "Unassigned"}</p>
+                  )}
+                </div>
+              ) : null}
               <div>
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500">Status</p>
                 <StatusForm action={changeLeadStatus.bind(null, lead.id)} status={lead.status} />
@@ -249,13 +289,13 @@ export default async function LeadDetailPage({ params }: PageProps<"/coach/leads
                 <p className="text-emerald-700 dark:text-emerald-400">
                   Converted{lead.converted_at ? ` on ${formatDateTime(lead.converted_at, tz, "MMM d, yyyy")}` : ""}.
                 </p>
-              ) : account && !isClientAccount ? (
-                <p className="text-zinc-500">This email belongs to a staff account.</p>
+              ) : isStaffAccount ? (
+                <p className="text-zinc-500">This email belongs to a member of your team.</p>
               ) : (
                 <>
                   <p className="text-zinc-500">
                     {isClientAccount
-                      ? "They already have an account. Link them as your client and mark this lead converted."
+                      ? "They already have an account. Link them as a client and mark this lead converted."
                       : invited
                         ? "Invitation sent. They'll be marked as a client when they first sign in. You can resend it."
                         : "Send an invite to the client portal. They'll be marked as a client when they join."}
@@ -357,12 +397,14 @@ export default async function LeadDetailPage({ params }: PageProps<"/coach/leads
             {lead.consent_text ? <p className="mt-2 text-xs italic text-zinc-500">&ldquo;{lead.consent_text}&rdquo;</p> : null}
           </Card>
 
-          <details className="rounded-2xl border border-red-200 p-4 dark:border-red-900">
-            <summary className="cursor-pointer text-sm font-semibold text-red-700 dark:text-red-400">Delete lead</summary>
-            <div className="mt-3">
-              <DeleteLeadForm action={deleteLead.bind(null, lead.id)} />
-            </div>
-          </details>
+          {manager || assignee === profile.id ? (
+            <details className="rounded-2xl border border-red-200 p-4 dark:border-red-900">
+              <summary className="cursor-pointer text-sm font-semibold text-red-700 dark:text-red-400">Delete lead</summary>
+              <div className="mt-3">
+                <DeleteLeadForm action={deleteLead.bind(null, lead.id)} />
+              </div>
+            </details>
+          ) : null}
         </aside>
       </div>
     </div>

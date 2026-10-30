@@ -84,7 +84,14 @@ export async function bookSlot(input: BookSlotInput): Promise<BookSlotResult> {
     if (!["pay_later", "credits", "free"].includes(input.payment)) return { ok: false, error: "Choose pay later, credits or free." };
     method = input.payment as Enums<"payment_method_kind">;
     if (method === "credits" && !input.clientId) return { ok: false, error: "Credits need a client account." };
-    candidates = input.coachId ? [input.coachId] : typeCoaches;
+    if (input.coachId) candidates = [input.coachId];
+    else {
+      // Staff may book outside hours, but coaches whose hours offer this time go first.
+      const offer = await isSlotOffered({ businessId: st.business_id, sessionType: st, coaches, coachId: null, startsAt: input.startsAt });
+      const prefs = { preferred: input.preferredCoachId, order: st.coach_ids };
+      const working = offer.offered ? orderCoachCandidates(offer.coachIds, prefs) : [];
+      candidates = [...working, ...orderCoachCandidates(typeCoaches.filter((id) => !working.includes(id)), prefs)];
+    }
   } else {
     const balance = input.clientId ? await creditBalance(input.clientId, st.business_id, st.id) : null;
     const allowed = paymentOptions(st, balance);
@@ -97,9 +104,8 @@ export async function bookSlot(input: BookSlotInput): Promise<BookSlotResult> {
     if (!offer.offered) {
       return { ok: false, code: offer.full ? "slot_full" : "slot_unavailable", error: bookingErrorMessage(offer.full ? "slot_full" : "slot_unavailable") };
     }
-    candidates = offer.coachIds;
+    candidates = orderCoachCandidates(offer.coachIds, { preferred: input.preferredCoachId, order: st.coach_ids });
   }
-  candidates = orderCoachCandidates(candidates, { preferred: input.preferredCoachId, order: st.coach_ids });
 
   const status: Enums<"booking_status"> = method === "stripe" ? "pending_payment" : "confirmed";
   let booking: Booking | null = null;

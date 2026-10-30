@@ -6,10 +6,12 @@ import { formatMoney } from "@/lib/format";
 import { retrieveOwnCheckoutSession } from "@/lib/payments/checkout";
 import { fulfillCheckoutSession } from "@/lib/payments/webhook";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireBusiness } from "@/lib/tenant";
 
 export const metadata: Metadata = { title: "Thank you", robots: { index: false } };
 
 export default async function CheckoutSuccessPage({ searchParams }: PageProps<"/checkout/success">) {
+  const business = await requireBusiness();
   const { session_id } = await searchParams;
   const profile = await getProfile();
 
@@ -17,10 +19,10 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps<"/
   let pending = false;
   if (profile && typeof session_id === "string" && /^cs_[A-Za-z0-9_]+$/.test(session_id)) {
     try {
-      const session = await retrieveOwnCheckoutSession(session_id, profile.id);
+      const session = await retrieveOwnCheckoutSession(business, session_id, profile.id);
       if (session) {
         // Don't wait for the webhook: fulfilment is idempotent, so do it now too.
-        if (session.status === "complete") await fulfillCheckoutSession(session);
+        if (session.status === "complete") await fulfillCheckoutSession(business, session);
         pending = session.payment_status === "unpaid";
         const offeringId = session.metadata?.offering_id;
         const { data: offering } = offeringId
@@ -28,6 +30,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps<"/
               .from("offerings")
               .select("name, kind, credits, trial_days, digital_file_path")
               .eq("id", offeringId)
+              .eq("business_id", business.id)
               .maybeSingle()
           : { data: null };
         summary = {
