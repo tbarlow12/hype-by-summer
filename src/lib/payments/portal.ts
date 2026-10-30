@@ -1,46 +1,62 @@
 import "server-only";
+import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
-import { absoluteUrl, BRAND_NAME } from "@/lib/env";
 
-let cachedConfigId: string | null = null;
+// Stripe Customer Portal. Clients use it on their business's connected
+// account; businesses use it on the platform account for their Pro plan.
+
+const APP_TAG = "trainer-platform";
+const cachedConfig = new Map<string, string>();
 
 /**
- * The Customer Portal configuration to use. Uses the account's default
- * configuration when one exists, otherwise creates one (payment methods,
- * invoice history, contact details and cancel-at-period-end).
+ * The portal configuration for an account (connected account id, or
+ * "platform"). Uses the account's default configuration when one exists,
+ * otherwise creates ours (payment methods, invoices, contact details and
+ * cancel-at-period-end).
  */
-async function portalConfiguration(): Promise<string> {
-  if (cachedConfigId) return cachedConfigId;
+async function portalConfiguration(opts: Stripe.RequestOptions, headline: string): Promise<string> {
+  const key = opts.stripeAccount ?? "platform";
+  const hit = cachedConfig.get(key);
+  if (hit) return hit;
   const s = stripe();
-  const existing = await s.billingPortal.configurations.list({ active: true, limit: 20 });
-  const found = existing.data.find((c) => c.is_default) ?? existing.data.find((c) => c.metadata?.app === "hype-by-summer");
-  if (found) return (cachedConfigId = found.id);
-
+  const existing = await s.billingPortal.configurations.list({ active: true, limit: 20 }, opts);
+  const found = existing.data.find((c) => c.is_default) ?? existing.data.find((c) => c.metadata?.app === APP_TAG);
+  if (found) {
+    cachedConfig.set(key, found.id);
+    return found.id;
+  }
   const created = await s.billingPortal.configurations.create(
     {
-      name: `${BRAND_NAME} billing`,
-      business_profile: { headline: `Manage your ${BRAND_NAME} billing` },
-      default_return_url: absoluteUrl("/me/billing"),
+      business_profile: { headline },
       features: {
         payment_method_update: { enabled: true },
         invoice_history: { enabled: true },
         customer_update: { enabled: true, allowed_updates: ["email", "name", "address", "phone"] },
         subscription_cancel: { enabled: true, mode: "at_period_end" },
       },
-      metadata: { app: "hype-by-summer" },
+      metadata: { app: APP_TAG },
     },
-    { idempotencyKey: `portal-configuration:v1:${absoluteUrl("/me/billing")}` },
+    { ...opts, idempotencyKey: `portal-configuration:v2:${key}` },
   );
-  return (cachedConfigId = created.id);
+  cachedConfig.set(key, created.id);
+  return created.id;
 }
 
-/** Stripe Customer Portal session URL for a customer. */
-export async function createPortalSession(customerId: string, returnPath = "/me/billing"): Promise<string> {
-  const configuration = await portalConfiguration();
-  const session = await stripe().billingPortal.sessions.create({
-    customer: customerId,
-    configuration,
-    return_url: absoluteUrl(returnPath),
-  });
+/**
+ * Customer Portal URL for a customer. Pass the connected account for client
+ * billing; omit it for platform (Pro plan) billing.
+ */
+export async function createPortalSession(input: {
+  customerId: string;
+  returnUrl: string;
+  account?: string | null;
+  headline: string;
+}): Promise<string> {
+  const opts: Stripe.RequestOptions = input.account ? { stripeAccount: input.account } : {};
+  const configuration = await portalConfiguration(opts, input.headline);
+  const session = await stripe().billingPortal.sessions.create(
+    { customer: input.customerId, configuration, return_url: input.returnUrl },
+    opts,
+  );
   return session.url;
 }

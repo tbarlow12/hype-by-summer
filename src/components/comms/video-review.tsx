@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import { Alert, Avatar, Badge, Button, Card, CardTitle, Textarea, cn } from "@/components/ui";
@@ -15,16 +15,22 @@ export function VideoReview({
   initialComments,
   people,
   viewerId,
-  isTrainer,
+  isStaff,
   timezone,
+  reviewedBy,
+  reviewerControl,
 }: {
   submission: { id: string; title: string; status: string; client_note: string | null; duration_seconds: number | null; created_at: string; exercise?: string | null };
   videoUrl: string | null;
   initialComments: VideoComment[];
   people: Record<string, Person>;
   viewerId: string;
-  isTrainer: boolean;
+  isStaff: boolean;
   timezone: string;
+  /** Who marked it reviewed (shown on the card). */
+  reviewedBy?: string | null;
+  /** Staff: reviewer picker. */
+  reviewerControl?: ReactNode;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -199,11 +205,13 @@ export function VideoReview({
             </div>
             <Badge tone={reviewed ? "green" : "amber"}>{reviewed ? "Reviewed" : "Awaiting review"}</Badge>
           </div>
+          {reviewed && reviewedBy ? <p className="mt-2 text-xs text-zinc-500">Reviewed by {reviewedBy}</p> : null}
           {submission.client_note ? (
             <p className="mt-3 rounded-xl bg-zinc-50 px-3 py-2 text-sm whitespace-pre-wrap dark:bg-zinc-950">“{submission.client_note}”</p>
           ) : null}
-          {isTrainer ? (
-            <div className="mt-4 flex flex-wrap gap-2">
+          {isStaff ? (
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              {reviewerControl}
               {reviewed ? (
                 <Button variant="outline" size="sm" disabled={pending} onClick={() => review(true)}>
                   Move back to queue
@@ -246,12 +254,12 @@ export function VideoReview({
               value={draft}
               maxLength={2000}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={isTrainer ? "Coaching cue, e.g. ‘Brace before you unrack’" : "Reply or ask a question"}
+              placeholder={isStaff ? "Coaching cue, e.g. ‘Brace before you unrack’" : "Reply or ask a question"}
               className="min-h-20"
             />
             <div className="flex justify-end">
               <Button type="submit" size="sm" disabled={posting || !draft.trim()}>
-                {posting ? "Posting…" : isTrainer ? "Add note" : "Reply"}
+                {posting ? "Posting…" : isStaff ? "Add note" : "Reply"}
               </Button>
             </div>
           </form>
@@ -263,7 +271,7 @@ export function VideoReview({
         </div>
         {sorted.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700">
-            {isTrainer ? "No notes yet. Pause on a rep and click “Comment at” to pin a cue to that moment." : "No feedback yet. Your coach's notes will appear here, pinned to moments in the video."}
+            {isStaff ? "No notes yet. Pause on a rep and click “Comment at” to pin a cue to that moment." : "No feedback yet. Your coach's notes will appear here, pinned to moments in the video."}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">

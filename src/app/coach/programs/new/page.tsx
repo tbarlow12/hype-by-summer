@@ -1,25 +1,24 @@
 import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/form";
 import { Card, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { displayName } from "@/lib/format";
 import { todayInTz } from "@/lib/training/dates";
+import { loadRoster, loadStaff } from "@/lib/training/server";
 import { createProgram } from "../actions";
 
 export const metadata = { title: "New program" };
 
 export default async function NewProgramPage({ searchParams }: PageProps<"/coach/programs/new">) {
-  const profile = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const sp = await searchParams;
   const preselect = typeof sp.client === "string" ? sp.client : "";
   const supabase = await createClient();
-  const { data: roster } = await supabase
-    .from("trainer_clients")
-    .select("client_id, status, client:profiles!trainer_clients_client_id_fkey(full_name, email)")
-    .eq("trainer_id", profile.id)
-    .in("status", ["active", "invited", "paused"]);
-  const clients = (roster ?? []).sort((a, b) => displayName(a.client).localeCompare(displayName(b.client)));
+  const [roster, staff] = await Promise.all([loadRoster(supabase, business.id), loadStaff(business.id)]);
+  const clients = roster.sort((a, b) => displayName(a.client).localeCompare(displayName(b.client)));
+  const preselectedCoach = clients.find((c) => c.client_id === preselect)?.primary_coach_id;
+  const defaultCoach = staff.some((m) => m.user_id === preselectedCoach) ? preselectedCoach! : profile.id;
 
   return (
     <div className="max-w-2xl">
@@ -58,6 +57,18 @@ export default async function NewProgramPage({ searchParams }: PageProps<"/coach
               <Field label="Start date" htmlFor="start_date" hint="Required for a client program. Day 1 = this date.">
                 <Input id="start_date" name="start_date" type="date" defaultValue={todayInTz(profile.timezone)} />
               </Field>
+              {staff.length > 1 ? (
+                <Field label="Responsible coach" htmlFor="coach_id" hint="Gets the client's logs and feedback. Templates are credited to you.">
+                  <Select id="coach_id" name="coach_id" defaultValue={defaultCoach}>
+                    {staff.map((m) => (
+                      <option key={m.user_id} value={m.user_id}>
+                        {displayName(m)}
+                        {m.user_id === profile.id ? " (you)" : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
             </div>
           </fieldset>
           <div>

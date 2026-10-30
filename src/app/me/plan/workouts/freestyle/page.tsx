@@ -3,18 +3,18 @@ import { PageHeader } from "@/components/ui";
 import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { todayInTz } from "@/lib/training/dates";
-import { EXERCISE_FIELDS, preferredUnit } from "@/lib/training/server";
+import { EXERCISE_FIELDS, exerciseLibraryFilter, preferredUnit } from "@/lib/training/server";
 import { toLoggerExercise } from "../blocks";
 import { WorkoutLogger } from "../workout-logger";
 
 export const metadata = { title: "Log a workout" };
 
 export default async function FreestylePage() {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const supabase = await createClient();
   const [{ data: library }, unit] = await Promise.all([
-    supabase.from("exercises").select(EXERCISE_FIELDS).order("name").limit(1000),
-    preferredUnit(supabase, profile.id),
+    supabase.from("exercises").select(EXERCISE_FIELDS).or(exerciseLibraryFilter(business.id)).order("name").limit(1000),
+    preferredUnit(supabase, business.id, profile.id),
   ]);
   return (
     <div className="max-w-3xl">

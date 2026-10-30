@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Avatar, Badge, EmptyState, PageHeader, Select, buttonClass, cn } from "@/components/ui";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { displayName, formatDateTime } from "@/lib/format";
 import { formatClock } from "@/lib/comms/policy";
@@ -14,8 +14,10 @@ const STATUSES = [
 ] as const;
 
 export default async function CoachVideosPage({ searchParams }: PageProps<"/coach/videos">) {
-  const profile = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const sp = await searchParams;
+  // Default: form checks assigned to me; "all" shows the whole team's queue.
+  const view = sp.view === "all" ? "all" : "mine";
   const clientFilter = typeof sp.client === "string" && /^[0-9a-f-]{36}$/i.test(sp.client) ? sp.client : "";
   const status = STATUSES.some((s) => s.value === sp.status) ? (sp.status as (typeof STATUSES)[number]["value"]) : "all";
   const supabase = await createClient();
@@ -23,22 +25,29 @@ export default async function CoachVideosPage({ searchParams }: PageProps<"/coac
   let query = supabase
     .from("video_submissions")
     .select(
-      "id, title, status, created_at, reviewed_at, duration_seconds, client_id, exercises(name), video_comments(count), profiles!video_submissions_client_id_fkey(full_name, email, avatar_url)",
+      "id, title, status, created_at, reviewed_at, duration_seconds, client_id, coach_id, exercises(name), video_comments(count), profiles!video_submissions_client_id_fkey(full_name, email, avatar_url), reviewer:profiles!video_submissions_coach_id_fkey(full_name, email)",
     )
-    .eq("trainer_id", profile.id)
+    .eq("business_id", business.id)
     .neq("status", "archived")
     .order("created_at", { ascending: false })
     .limit(200);
+  if (view === "mine") query = query.eq("coach_id", profile.id);
   if (clientFilter) query = query.eq("client_id", clientFilter);
   if (status === "pending") query = query.eq("status", "pending_review");
   if (status === "reviewed") query = query.eq("status", "reviewed");
 
-  const [{ data: subs }, { data: clients }] = await Promise.all([
+  const [{ data: subs }, { data: clients }, { count: unassigned }] = await Promise.all([
     query,
     supabase
-      .from("trainer_clients")
-      .select("client_id, profiles!trainer_clients_client_id_fkey(full_name, email)")
-      .eq("trainer_id", profile.id),
+      .from("business_clients")
+      .select("client_id, profiles!business_clients_client_id_fkey(full_name, email)")
+      .eq("business_id", business.id),
+    supabase
+      .from("video_submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", business.id)
+      .eq("status", "pending_review")
+      .is("coach_id", null),
   ]);
 
   // Pending first (oldest waiting at the top), then reviewed newest first.
@@ -53,10 +62,32 @@ export default async function CoachVideosPage({ searchParams }: PageProps<"/coac
     <div>
       <PageHeader
         title="Form checks"
-        description={pending.length ? `${pending.length} video${pending.length === 1 ? "" : "s"} waiting for your review` : "Queue is clear. Nice work."}
+        description={
+          pending.length
+            ? `${pending.length} video${pending.length === 1 ? "" : "s"} waiting for ${view === "mine" ? "your" : "the team's"} review`
+            : "Queue is clear. Nice work."
+        }
       />
 
+      {view === "mine" && unassigned ? (
+        <p className="mb-3 text-sm text-zinc-500">
+          {unassigned} form check{unassigned === 1 ? " has" : "s have"} no reviewer yet.{" "}
+          <Link href="/coach/videos?view=all&status=pending" className="font-medium text-brand hover:underline">
+            See the team queue
+          </Link>
+        </p>
+      ) : null}
+
       <form className="mb-4 flex flex-wrap items-end gap-2">
+        <div>
+          <label htmlFor="view" className="mb-1 block text-xs font-medium text-zinc-500">
+            Reviewer
+          </label>
+          <Select id="view" name="view" defaultValue={view} className="w-44">
+            <option value="mine">Assigned to me</option>
+            <option value="all">Everyone</option>
+          </Select>
+        </div>
         <div>
           <label htmlFor="client" className="mb-1 block text-xs font-medium text-zinc-500">
             Client
@@ -83,7 +114,7 @@ export default async function CoachVideosPage({ searchParams }: PageProps<"/coac
           </Select>
         </div>
         <button className={buttonClass("outline")}>Filter</button>
-        {clientFilter || status !== "all" ? (
+        {clientFilter || status !== "all" || view !== "mine" ? (
           <Link href="/coach/videos" className={buttonClass("ghost")}>
             Reset
           </Link>
@@ -92,8 +123,12 @@ export default async function CoachVideosPage({ searchParams }: PageProps<"/coac
 
       {rows.length === 0 ? (
         <EmptyState
-          title={clientFilter || status !== "all" ? "No videos match these filters" : "No form checks yet"}
-          description="When clients upload a lift from their portal, it lands here for review."
+          title={clientFilter || status !== "all" ? "No videos match these filters" : view === "mine" ? "Nothing assigned to you" : "No form checks yet"}
+          description={
+            view === "mine"
+              ? "Form checks from clients you're the primary coach for land here. Switch the reviewer filter to Everyone for the team queue."
+              : "When clients upload a lift from their portal, it lands here for review."
+          }
         />
       ) : (
         <ul className="flex flex-col gap-2">
@@ -117,6 +152,7 @@ export default async function CoachVideosPage({ searchParams }: PageProps<"/coac
                         displayName(s.profiles),
                         s.exercises?.name,
                         s.duration_seconds ? formatClock(Number(s.duration_seconds)) : null,
+                        view === "all" ? (s.coach_id ? `Reviewer: ${s.coach_id === profile.id ? "you" : displayName(s.reviewer)}` : "Unassigned") : null,
                         formatDateTime(s.created_at, profile.timezone, "MMM d, h:mm a"),
                       ]
                         .filter(Boolean)

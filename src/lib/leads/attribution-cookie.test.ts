@@ -5,7 +5,7 @@ const now = new Date("2026-10-27T12:00:00Z");
 
 describe("attribution cookie", () => {
   it("builds a touch from UTM params and an external referrer", () => {
-    const t = touchFromVisit("https://hype.fit/free/guide?utm_source=IG&utm_campaign=fall&x=1", "https://instagram.com/p/abc?x=y", now);
+    const t = touchFromVisit("https://studio.example.com/free/guide?utm_source=IG&utm_campaign=fall&x=1", "https://instagram.com/p/abc?x=y", now);
     expect(t).toEqual({
       utm_source: "IG",
       utm_campaign: "fall",
@@ -16,21 +16,21 @@ describe("attribution cookie", () => {
   });
 
   it("ignores same-site referrers", () => {
-    expect(touchFromVisit("https://hype.fit/", "https://hype.fit/free", now).referrer).toBeUndefined();
+    expect(touchFromVisit("https://studio.example.com/", "https://studio.example.com/free", now).referrer).toBeUndefined();
   });
 
   it("never overwrites first touch and only moves last touch for campaign visits", () => {
-    const first = mergeVisit(null, touchFromVisit("https://hype.fit/?utm_source=ig", "", now))!;
+    const first = mergeVisit(null, touchFromVisit("https://studio.example.com/?utm_source=ig", "", now))!;
     expect(first.ft.utm_source).toBe("ig");
     expect(first.lt?.utm_source).toBe("ig");
-    expect(mergeVisit(first, touchFromVisit("https://hype.fit/pricing", "", now))).toBeNull();
-    const second = mergeVisit(first, touchFromVisit("https://hype.fit/?utm_source=google", "", now))!;
+    expect(mergeVisit(first, touchFromVisit("https://studio.example.com/pricing", "", now))).toBeNull();
+    const second = mergeVisit(first, touchFromVisit("https://studio.example.com/?utm_source=google", "", now))!;
     expect(second.ft.utm_source).toBe("ig");
     expect(second.lt?.utm_source).toBe("google");
   });
 
   it("direct first visit has no last touch", () => {
-    expect(mergeVisit(null, touchFromVisit("https://hype.fit/", "", now))).toEqual({
+    expect(mergeVisit(null, touchFromVisit("https://studio.example.com/", "", now))).toEqual({
       v: 1,
       ft: { landing_page: "/", ts: now.toISOString() },
     });

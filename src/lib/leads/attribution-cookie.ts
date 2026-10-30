@@ -1,8 +1,8 @@
-// Encoding for the first-party `hbs_attr` cookie (client + server safe, pure).
+// Encoding for the first-party attribution cookie (host-only, so per business site) (client + server safe, pure).
 // Shape: { v: 1, ft: Touch, lt?: Touch } where ft = first touch (never
 // overwritten) and lt = most recent campaign touch.
 
-export const ATTR_COOKIE = "hbs_attr";
+export const ATTR_COOKIE = "site_attr";
 export const ATTR_MAX_AGE_SECONDS = 60 * 60 * 24 * 90;
 
 export type Touch = {

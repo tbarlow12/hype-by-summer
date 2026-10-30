@@ -213,7 +213,7 @@ export function monthStartUtc(monthKey: string, tz: string): Date {
   return fromZonedTime(`${monthKey}-01T00:00:00`, tz);
 }
 
-/** Bucket net revenue by month in the trainer's timezone. */
+/** Bucket net revenue by month in the business's timezone. */
 export function revenueByMonth(rows: RevenueRow[], tz: string, now: Date, months = 12): { month: string; cents: number }[] {
   const keys = lastMonths(now, tz, months);
   const totals = new Map(keys.map((k) => [k, 0]));
@@ -225,7 +225,7 @@ export function revenueByMonth(rows: RevenueRow[], tz: string, now: Date, months
   return keys.map((month) => ({ month, cents: totals.get(month)! }));
 }
 
-/** Late-cancel / no-show fee configured for a trainer. */
+/** Late-cancel / no-show fee configured by a business. */
 export function bookingFeeCents(
   policy: { late_cancel_fee_cents: number; no_show_fee_cents: number },
   kind: "late_cancel" | "no_show",
@@ -251,3 +251,52 @@ export function feeFailureMessage(err: { code?: string; decline_code?: string; m
       return err.message ?? "The card could not be charged.";
   }
 }
+
+// ---------------------------------------------------------------------------
+// Connect
+// ---------------------------------------------------------------------------
+
+/** account.updated → businesses columns. */
+export function businessUpdateFromAccount(account: Pick<Stripe.Account, "charges_enabled" | "payouts_enabled" | "details_submitted">) {
+  return {
+    stripe_charges_enabled: Boolean(account.charges_enabled),
+    stripe_payouts_enabled: Boolean(account.payouts_enabled),
+    stripe_details_submitted: Boolean(account.details_submitted),
+  };
+}
+
+export type ConnectStatus = "not_connected" | "onboarding" | "restricted" | "active";
+
+/** Where a business is in Stripe onboarding. */
+export function connectStatus(b: {
+  stripe_account_id: string | null;
+  stripe_charges_enabled: boolean;
+  stripe_payouts_enabled: boolean;
+  stripe_details_submitted: boolean;
+}): ConnectStatus {
+  if (!b.stripe_account_id) return "not_connected";
+  if (b.stripe_charges_enabled && b.stripe_payouts_enabled) return "active";
+  if (!b.stripe_details_submitted) return "onboarding";
+  return "restricted";
+}
+
+/** application_fee.created / .refunded → platform_fees row. */
+export function platformFeeRow(
+  fee: Pick<Stripe.ApplicationFee, "id" | "account" | "amount" | "amount_refunded" | "currency" | "charge" | "created">,
+  businessId: string | null,
+) {
+  return {
+    id: fee.id,
+    business_id: businessId,
+    stripe_account_id: idOf(fee.account)!,
+    amount_cents: fee.amount,
+    amount_refunded_cents: fee.amount_refunded,
+    currency: fee.currency,
+    charge_id: idOf(fee.charge),
+    created_at: toIso(fee.created) ?? new Date().toISOString(),
+  };
+}
+
+/** Fee the platform kept on a payment (net of fee refunds). */
+export const netPlatformFeeCents = (fee: Pick<Stripe.ApplicationFee, "amount" | "amount_refunded">) =>
+  Math.max(0, fee.amount - fee.amount_refunded);

@@ -1,11 +1,24 @@
-// App-icon artwork (an "H" monogram on brand rose) as plain flexbox divs so it
-// renders in next/og's ImageResponse without loading a font.
-export function BrandMark({ size, maskable = false }: { size: number; maskable?: boolean }) {
+// App-icon artwork for a business, as plain flexbox divs for next/og's
+// ImageResponse: the business logo centered on white, or a monogram of its
+// name in the brand colors.
+export function BrandMark({
+  size,
+  maskable = false,
+  logoUrl,
+  initials,
+  background,
+  foreground,
+}: {
+  size: number;
+  maskable?: boolean;
+  logoUrl?: string | null;
+  initials: string;
+  background: string;
+  foreground: string;
+}) {
   const u = size / 512;
-  const s = maskable ? 0.82 : 1; // keep the glyph inside the maskable safe zone
-  const bar = { position: "absolute" as const, background: "#ffffff", borderRadius: 16 * u * s };
-  const w = 212 * u * s;
-  const h = 256 * u * s;
+  // Keep artwork inside the maskable safe zone (inner 80%).
+  const inner = (maskable ? 0.62 : 0.74) * size;
   return (
     <div
       style={{
@@ -14,15 +27,27 @@ export function BrandMark({ size, maskable = false }: { size: number; maskable?:
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#e11d48",
+        background: logoUrl ? "#ffffff" : background,
         borderRadius: maskable ? 0 : 112 * u,
       }}
     >
-      <div style={{ position: "relative", width: w, height: h, display: "flex" }}>
-        <div style={{ ...bar, left: 0, top: 0, width: 64 * u * s, height: h }} />
-        <div style={{ ...bar, right: 0, top: 0, width: 64 * u * s, height: h }} />
-        <div style={{ ...bar, left: 0, top: 98 * u * s, width: w, height: 60 * u * s }} />
-      </div>
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logoUrl} alt="" width={inner} height={inner} style={{ objectFit: "contain", width: inner, height: inner }} />
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            color: foreground,
+            fontSize: (initials.length > 1 ? 0.42 : 0.56) * inner * (maskable ? 1.05 : 1),
+            fontWeight: 800,
+            letterSpacing: -0.02 * size,
+            lineHeight: 1,
+          }}
+        >
+          {initials}
+        </div>
+      )}
     </div>
   );
 }

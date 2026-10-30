@@ -17,23 +17,24 @@ export const metadata = { title: "Progress" };
 const MEASUREMENTS = ["waist", "hips", "chest", "arm", "thigh"] as const;
 
 export default async function ProgressPage({ searchParams }: PageProps<"/me/progress">) {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const sp = await searchParams;
   const supabase = await createClient();
   const today = todayInTz(profile.timezone);
   const weekStart = weekStartMonday(today);
 
   const [{ data: metrics }, { data: photos }, { data: habits }, { data: goals }, prs] = await Promise.all([
-    supabase.from("body_metrics").select("*").eq("client_id", profile.id).order("measured_on", { ascending: true }).limit(500),
-    supabase.from("progress_photos").select("*").eq("client_id", profile.id).order("taken_on", { ascending: false }).limit(200),
+    supabase.from("body_metrics").select("*").eq("business_id", business.id).eq("client_id", profile.id).order("measured_on", { ascending: true }).limit(500),
+    supabase.from("progress_photos").select("*").eq("business_id", business.id).eq("client_id", profile.id).order("taken_on", { ascending: false }).limit(200),
     supabase
       .from("habits")
-      .select("id, name, target_per_week, trainer_id, active, habit_logs(logged_on)")
+      .select("id, name, target_per_week, created_by, active, habit_logs(logged_on)")
+      .eq("business_id", business.id)
       .eq("client_id", profile.id)
       .eq("active", true)
       .order("created_at"),
-    supabase.from("goals").select("*").eq("client_id", profile.id).order("achieved_at", { ascending: true, nullsFirst: true }).order("created_at"),
-    getPersonalRecords(supabase, profile.id),
+    supabase.from("goals").select("*").eq("business_id", business.id).eq("client_id", profile.id).order("achieved_at", { ascending: true, nullsFirst: true }).order("created_at"),
+    getPersonalRecords(supabase, business.id, profile.id),
   ]);
 
   const rows = metrics ?? [];
@@ -69,7 +70,7 @@ export default async function ProgressPage({ searchParams }: PageProps<"/me/prog
     id: h.id,
     name: h.name,
     target_per_week: h.target_per_week,
-    byCoach: !!h.trainer_id,
+    byCoach: !!h.created_by && h.created_by !== profile.id,
     logged: (h.habit_logs ?? []).map((l) => l.logged_on).filter((d) => d >= addDays(today, -400)),
   }));
 
@@ -340,7 +341,7 @@ export default async function ProgressPage({ searchParams }: PageProps<"/me/prog
                         <p className="text-xs text-zinc-500">
                           {g.target_value != null ? `Target ${g.target_value}${g.unit ? ` ${g.unit}` : ""}` : "No numeric target"}
                           {g.target_date ? ` by ${longDateLabel(g.target_date)}` : ""}
-                          {g.trainer_id ? " · set with your coach" : ""}
+                          {g.created_by && g.created_by !== profile.id ? " · set with your coach" : ""}
                         </p>
                       </div>
                       {g.achieved_at ? <Badge tone="green">Achieved {longDateLabel(g.achieved_at.slice(0, 10), { month: "short", day: "numeric" })}</Badge> : pct != null ? <Badge tone="brand">{pct}%</Badge> : null}

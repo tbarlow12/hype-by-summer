@@ -4,10 +4,11 @@ import { ActionForm, SubmitButton } from "@/components/form";
 import { Alert, Badge, Card, CardTitle, PageHeader } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/training/confirm-submit";
 import { VideoEmbed } from "@/components/training/video-embed";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { titleCase } from "@/lib/format";
 import { EXERCISE_FIELDS } from "@/lib/training/server";
+import { exerciseUsableBy } from "@/lib/training/routing";
 import { deleteExercise, duplicateExercise, updateExercise } from "../actions";
 import { ExerciseForm } from "../exercise-form";
 
@@ -16,16 +17,17 @@ export const metadata = { title: "Exercise" };
 export default async function ExercisePage({ params, searchParams }: PageProps<"/coach/exercises/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const profile = await requireTrainer();
+  const { business } = await requireStaff();
   const supabase = await createClient();
   const { data: ex } = await supabase.from("exercises").select(EXERCISE_FIELDS).eq("id", id).maybeSingle();
-  if (!ex || (ex.trainer_id && ex.trainer_id !== profile.id)) notFound();
-  const own = ex.trainer_id === profile.id;
+  if (!ex || !exerciseUsableBy(ex, business.id)) notFound();
+  const own = ex.business_id === business.id;
 
   const { count: usage } = await supabase
     .from("workout_exercises")
-    .select("id", { count: "exact", head: true })
-    .eq("exercise_id", id);
+    .select("id, workout:program_workouts!inner(program:programs!inner(business_id))", { count: "exact", head: true })
+    .eq("exercise_id", id)
+    .eq("workout.program.business_id", business.id);
 
   return (
     <div className="max-w-3xl">
@@ -34,7 +36,7 @@ export default async function ExercisePage({ params, searchParams }: PageProps<"
       </Link>
       <PageHeader
         title={ex.name}
-        description={own ? `Your exercise · used in ${usage ?? 0} program workout${usage === 1 ? "" : "s"}` : "Global library exercise"}
+        description={own ? `Your team's exercise · used in ${usage ?? 0} program workout${usage === 1 ? "" : "s"}` : "Global library exercise"}
         actions={
           <>
             <ActionForm action={duplicateExercise.bind(null, ex.id)}>

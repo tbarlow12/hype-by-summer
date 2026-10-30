@@ -1,45 +1,61 @@
 import Link from "next/link";
-import { Avatar, Card, CardTitle, EmptyState, PageHeader, Stat } from "@/components/ui";
+import { Avatar, Card, CardTitle, EmptyState, LinkButton, PageHeader, Stat } from "@/components/ui";
 import { CheckInCard } from "@/components/training/check-in-card";
-import { requireTrainer } from "@/lib/auth";
+import { isManager, requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { displayName } from "@/lib/format";
 import { respondToCheckIn } from "@/lib/training/coach-actions";
 import { longDateLabel, todayInTz, weekStartMonday } from "@/lib/training/dates";
+import { inboxScope } from "@/lib/training/routing";
 
 export const metadata = { title: "Check-ins" };
 
-export default async function CoachCheckInsPage() {
-  const profile = await requireTrainer();
+const CLIENT_EMBED = "client:profiles!check_ins_client_id_fkey(id, full_name, email, avatar_url)";
+const RESPONDER_EMBED = "responder:profiles!check_ins_responded_by_fkey(full_name)";
+
+export default async function CoachCheckInsPage({ searchParams }: PageProps<"/coach/check-ins">) {
+  const { profile, business, membership } = await requireStaff();
+  const sp = await searchParams;
+  // Coaches default to their own clients (primary coach = me); managers to everyone.
+  const scope = inboxScope(sp.scope, isManager(membership));
   const supabase = await createClient();
-  // Clients check in by their own Monday; the trainer's Monday is close enough for the roll call.
+  // Clients check in by their own Monday; the coach's Monday is close enough for the roll call.
   const weekOf = weekStartMonday(todayInTz(profile.timezone));
 
-  const [{ data: inbox }, { data: recent }, { data: roster }, { data: thisWeek }] = await Promise.all([
-    supabase
-      .from("check_ins")
-      .select("*, client:profiles!check_ins_client_id_fkey(id, full_name, email, avatar_url)")
-      .eq("trainer_id", profile.id)
-      .is("trainer_response", null)
-      .order("created_at", { ascending: true })
-      .limit(50),
-    supabase
-      .from("check_ins")
-      .select("*, client:profiles!check_ins_client_id_fkey(id, full_name, email, avatar_url)")
-      .eq("trainer_id", profile.id)
-      .not("trainer_response", "is", null)
-      .order("trainer_responded_at", { ascending: false })
-      .limit(10),
-    supabase
-      .from("trainer_clients")
-      .select("client_id, client:profiles!trainer_clients_client_id_fkey(id, full_name, email, avatar_url)")
-      .eq("trainer_id", profile.id)
-      .eq("status", "active"),
-    supabase.from("check_ins").select("client_id").eq("trainer_id", profile.id).gte("week_of", weekOf),
+  const { data: activeRoster } = await supabase
+    .from("business_clients")
+    .select("client_id, primary_coach_id, client:profiles!business_clients_client_id_fkey(id, full_name, email, avatar_url)")
+    .eq("business_id", business.id)
+    .eq("status", "active");
+  const roster = (activeRoster ?? []).filter((r) => scope === "all" || r.primary_coach_id === profile.id);
+  const myClientIds = roster.map((r) => r.client_id);
+
+  // "Mine" filters every query to my clients.
+  const ids = scope === "all" ? null : myClientIds;
+  let inboxQ = supabase
+    .from("check_ins")
+    .select(`*, ${CLIENT_EMBED}, ${RESPONDER_EMBED}`)
+    .eq("business_id", business.id)
+    .is("coach_response", null);
+  let recentQ = supabase
+    .from("check_ins")
+    .select(`*, ${CLIENT_EMBED}, ${RESPONDER_EMBED}`)
+    .eq("business_id", business.id)
+    .not("coach_response", "is", null);
+  let weekQ = supabase.from("check_ins").select("client_id").eq("business_id", business.id).gte("week_of", weekOf);
+  if (ids) {
+    inboxQ = inboxQ.in("client_id", ids);
+    recentQ = recentQ.in("client_id", ids);
+    weekQ = weekQ.in("client_id", ids);
+  }
+  const [{ data: inbox }, { data: recent }, { data: thisWeek }] = await Promise.all([
+    inboxQ.order("created_at", { ascending: true }).limit(50),
+    recentQ.order("coach_responded_at", { ascending: false }).limit(10),
+    weekQ,
   ]);
 
   const checkedIn = new Set((thisWeek ?? []).map((c) => c.client_id));
-  const missing = (roster ?? [])
+  const missing = roster
     .filter((r) => !checkedIn.has(r.client_id))
     .sort((a, b) => displayName(a.client).localeCompare(displayName(b.client)));
 
@@ -52,11 +68,24 @@ export default async function CoachCheckInsPage() {
 
   return (
     <div>
-      <PageHeader title="Check-ins" description={`Weekly check-ins from your clients. This week started ${longDateLabel(weekOf, { weekday: "long", month: "short", day: "numeric" })}.`} />
+      <PageHeader
+        title="Check-ins"
+        description={`Weekly check-ins from ${scope === "mine" ? "your clients" : "all clients"}. This week started ${longDateLabel(weekOf, { weekday: "long", month: "short", day: "numeric" })}.`}
+        actions={
+          <div className="flex gap-1" role="group" aria-label="Whose check-ins">
+            <LinkButton href="/coach/check-ins?scope=mine" size="sm" variant={scope === "mine" ? "primary" : "ghost"} aria-current={scope === "mine" ? "page" : undefined}>
+              My clients
+            </LinkButton>
+            <LinkButton href="/coach/check-ins?scope=all" size="sm" variant={scope === "all" ? "primary" : "ghost"} aria-current={scope === "all" ? "page" : undefined}>
+              All clients
+            </LinkButton>
+          </div>
+        }
+      />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat label="Needs a reply" value={inbox?.length ?? 0} />
-        <Stat label="Checked in this week" value={`${(roster ?? []).length - missing.length}/${(roster ?? []).length}`} />
+        <Stat label="Checked in this week" value={`${roster.length - missing.length}/${roster.length}`} />
         <Stat label="Missing this week" value={missing.length} />
       </div>
 
@@ -64,7 +93,14 @@ export default async function CoachCheckInsPage() {
         <section aria-labelledby="inbox-h">
           <h2 id="inbox-h" className="mb-3 text-lg font-semibold">Needs a reply</h2>
           {!inbox?.length ? (
-            <EmptyState title="Inbox zero" description="Every check-in has a reply. New ones show up here." />
+            <EmptyState
+              title="Inbox zero"
+              description={
+                scope === "mine" && myClientIds.length === 0
+                  ? "You aren't the primary coach for any active clients. Switch to All clients to see the whole team's."
+                  : "Every check-in has a reply. New ones show up here."
+              }
+            />
           ) : (
             <div className="flex flex-col gap-3">
               {inbox.map((c) => (
@@ -89,7 +125,7 @@ export default async function CoachCheckInsPage() {
           <Card>
             <CardTitle id="missing-h">Haven&apos;t checked in this week</CardTitle>
             {missing.length === 0 ? (
-              <p className="mt-2 text-sm text-zinc-500">{roster?.length ? "Everyone's checked in." : "No active clients yet."}</p>
+              <p className="mt-2 text-sm text-zinc-500">{roster.length ? "Everyone's checked in." : "No active clients yet."}</p>
             ) : (
               <ul className="mt-3 flex flex-col gap-2">
                 {missing.map((m) => (

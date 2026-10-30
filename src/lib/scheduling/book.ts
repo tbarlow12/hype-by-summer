@@ -2,21 +2,31 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Enums } from "@/lib/supabase/database.types";
+import type { Business } from "@/lib/tenant";
 import { createBookingCheckout } from "@/lib/payments/checkout";
 import { captureLead, recordLeadEvent } from "@/lib/leads";
 import { readAttribution } from "@/lib/attribution";
-import { absoluteUrl } from "@/lib/env";
-import { creditBalance, getTrainerSchedulingInfo, isSlotOffered, type SessionType } from "./availability";
+import { coachesForType, creditBalance, isSlotOffered, listCoaches, type Coach, type SessionType } from "./availability";
 import { onBookingConfirmed, seatsTaken, type Booking } from "./lifecycle";
 import { bookingErrorMessage, paymentOptions, type PaymentChoice } from "./policy";
+import { orderCoachCandidates } from "./slots";
 import { addDays, localDateOf, localTimeOf, timeToMinutes, zonedTimeToUtc } from "./tz";
 
 export const STRIPE_HOLD_MINUTES = 30;
 
+/** RPC errors after which another coach may still be free at that time. */
+const TRY_NEXT_COACH = new Set(["slot_conflict", "slot_full", "slot_unavailable", "coach_not_available"]);
+
 export type BookSlotInput = {
+  /** The business the booking is for (from the host or the authorized staff context). */
+  business: Pick<Business, "id">;
   sessionType: SessionType;
+  /** A specific coach, or null for "any available coach". */
+  coachId: string | null;
+  /** For "any": tried first when free (the client's primary coach). */
+  preferredCoachId?: string | null;
   startsAt: string;
-  /** Signed-in client booking for themselves (or a trainer booking for them). */
+  /** Signed-in client booking for themselves (or staff booking for them). */
   clientId: string | null;
   guest?: { name: string; email: string; phone?: string };
   /** Phone for this booking (clients too; stored in guest_phone). */
@@ -26,10 +36,12 @@ export type BookSlotInput = {
   notes?: string;
   clientTimezone?: string;
   payment: PaymentChoice;
-  /** "public" = client/guest self-service (slot must be offered); "trainer" = coach booking on someone's behalf. */
-  source: "public" | "trainer";
+  /** "public" = client/guest self-service (slot must be offered); "staff" = booking on someone's behalf. */
+  source: "public" | "staff";
   leadId?: string | null;
   recurrenceGroup?: string;
+  /** Preloaded coaches of the business (avoids reloading in loops). */
+  coaches?: Coach[];
 };
 
 export type BookSlotResult =
@@ -37,8 +49,7 @@ export type BookSlotResult =
   | { ok: false; error: string; code?: string };
 
 async function cancelFailed(bookingId: string, reason: string) {
-  const admin = createAdminClient();
-  await admin
+  await createAdminClient()
     .from("bookings")
     .update({ status: "cancelled", cancel_reason: reason, cancelled_at: new Date().toISOString(), hold_expires_at: null })
     .eq("id", bookingId);
@@ -48,54 +59,75 @@ async function cancelFailed(bookingId: string, reason: string) {
  * Reserve a slot via the reserve_booking RPC and settle payment:
  * free / pay later → confirmed; credits → confirmed + consume_credits (rolled
  * back by cancelling on failure); card → pending_payment with a 30 minute hold
- * and a Stripe Checkout redirect.
+ * and a Stripe Checkout redirect. With "any available coach" the free coaches
+ * are tried in order (preferred coach first) until one reservation succeeds.
+ * `redirectUrl` is in-app (relative) or the Stripe Checkout URL.
  */
 export async function bookSlot(input: BookSlotInput): Promise<BookSlotResult> {
   const admin = createAdminClient();
   const st = input.sessionType;
-  if (!st.active) return { ok: false, error: bookingErrorMessage("session_type_not_found") };
+  if (st.business_id !== input.business.id || !st.active) return { ok: false, error: bookingErrorMessage("session_type_not_found") };
   if (!input.clientId && !input.guest?.email) return { ok: false, error: "Please enter your email address." };
   if (Date.parse(input.startsAt) <= Date.now()) return { ok: false, error: "That time has already passed." };
 
-  const trainer = await getTrainerSchedulingInfo(st.trainer_id);
-  if (!trainer) return { ok: false, error: "This coach isn't taking bookings right now." };
+  const coaches = input.coaches ?? (await listCoaches(st.business_id, { bookableOnly: true }));
+  const typeCoaches = coachesForType(st, coaches).map((c) => c.id);
+  if (input.coachId && !typeCoaches.includes(input.coachId)) {
+    return { ok: false, error: "That coach doesn't offer this session. Pick another coach." };
+  }
+  if (typeCoaches.length === 0) return { ok: false, error: "This session isn't taking bookings right now." };
 
   // Validate the payment method server-side (never trust the form).
   let method: Enums<"payment_method_kind">;
-  if (input.source === "trainer") {
+  let candidates: string[];
+  if (input.source === "staff") {
     if (!["pay_later", "credits", "free"].includes(input.payment)) return { ok: false, error: "Choose pay later, credits or free." };
     method = input.payment as Enums<"payment_method_kind">;
     if (method === "credits" && !input.clientId) return { ok: false, error: "Credits need a client account." };
+    candidates = input.coachId ? [input.coachId] : typeCoaches;
   } else {
-    const balance = input.clientId ? await creditBalance(input.clientId, st.trainer_id, st.id) : null;
+    const balance = input.clientId ? await creditBalance(input.clientId, st.business_id, st.id) : null;
     const allowed = paymentOptions(st, balance);
     if (!allowed.includes(input.payment)) {
       return { ok: false, error: input.payment === "credits" ? bookingErrorMessage("insufficient_credits") : "That payment option isn't available." };
     }
     method = input.payment;
 
-    const offer = await isSlotOffered({ trainerId: st.trainer_id, timezone: trainer.timezone, sessionType: st, startsAt: input.startsAt });
+    const offer = await isSlotOffered({ businessId: st.business_id, sessionType: st, coaches, coachId: input.coachId, startsAt: input.startsAt });
     if (!offer.offered) {
       return { ok: false, code: offer.full ? "slot_full" : "slot_unavailable", error: bookingErrorMessage(offer.full ? "slot_full" : "slot_unavailable") };
     }
+    candidates = offer.coachIds;
   }
+  candidates = orderCoachCandidates(candidates, { preferred: input.preferredCoachId, order: st.coach_ids });
 
   const status: Enums<"booking_status"> = method === "stripe" ? "pending_payment" : "confirmed";
-  const { data: booking, error } = await admin.rpc("reserve_booking", {
-    p_session_type_id: st.id,
-    p_starts_at: new Date(input.startsAt).toISOString(),
-    p_client_id: input.clientId,
-    p_guest_name: input.clientId ? null : (input.guest?.name ?? null),
-    p_guest_email: input.clientId ? null : (input.guest?.email.toLowerCase() ?? null),
-    p_guest_phone: input.phone ?? input.guest?.phone ?? null,
-    p_status: status,
-    p_payment_method: method,
-    p_hold_minutes: STRIPE_HOLD_MINUTES,
-    p_client_notes: input.notes ?? null,
-    p_lead_id: input.leadId ?? null,
-  });
-  if (error || !booking) {
-    const code = error?.message?.trim();
+  let booking: Booking | null = null;
+  let lastCode: string | undefined;
+  for (const coachId of candidates) {
+    const { data, error } = await admin.rpc("reserve_booking", {
+      p_session_type_id: st.id,
+      p_coach_id: coachId,
+      p_starts_at: new Date(input.startsAt).toISOString(),
+      p_client_id: input.clientId,
+      p_guest_name: input.clientId ? null : (input.guest?.name ?? null),
+      p_guest_email: input.clientId ? null : (input.guest?.email.toLowerCase() ?? null),
+      p_guest_phone: input.phone ?? input.guest?.phone ?? null,
+      p_status: status,
+      p_payment_method: method,
+      p_hold_minutes: STRIPE_HOLD_MINUTES,
+      p_client_notes: input.notes ?? null,
+      p_lead_id: input.leadId ?? null,
+    });
+    if (data && !error) {
+      booking = data;
+      break;
+    }
+    lastCode = error?.message?.trim();
+    if (!lastCode || !TRY_NEXT_COACH.has(lastCode)) break;
+  }
+  if (!booking) {
+    const code = lastCode === "coach_not_available" ? "slot_unavailable" : lastCode;
     return { ok: false, code, error: bookingErrorMessage(code) };
   }
 
@@ -109,7 +141,7 @@ export async function bookSlot(input: BookSlotInput): Promise<BookSlotResult> {
   if (method === "credits") {
     const { error: creditError } = await admin.rpc("consume_credits", {
       p_client: input.clientId!,
-      p_trainer: st.trainer_id,
+      p_business: st.business_id,
       p_session_type: st.id,
       p_amount: st.credits_required,
       p_booking: booking.id,
@@ -137,15 +169,15 @@ export async function bookSlot(input: BookSlotInput): Promise<BookSlotResult> {
   } catch (err) {
     console.error("[scheduling] onBookingConfirmed failed", err);
   }
-  return { ok: true, booking, redirectUrl: absoluteUrl(`/booking/${booking.manage_token}?status=confirmed`) };
+  return { ok: true, booking, redirectUrl: `/booking/${booking.manage_token}?status=confirmed` };
 }
 
 /**
- * Consultation bookings from guests are captured as leads (with first-touch
- * attribution). Returns the lead id or null if capture failed.
+ * Consultation bookings from guests are captured as leads of the business
+ * (with first-touch attribution). Returns the lead id or null on failure.
  */
 export async function captureConsultLead(input: {
-  trainerId: string;
+  businessId: string;
   email: string;
   name: string;
   phone?: string;
@@ -153,7 +185,7 @@ export async function captureConsultLead(input: {
   try {
     const [firstName, ...rest] = input.name.trim().split(/\s+/);
     const lead = await captureLead({
-      trainerId: input.trainerId,
+      businessId: input.businessId,
       email: input.email,
       firstName,
       lastName: rest.join(" ") || undefined,
@@ -168,7 +200,7 @@ export async function captureConsultLead(input: {
   }
 }
 
-/** Marks a lead's consult as booked (event + status) once the booking exists. */
+/** Marks a lead's consult as booked (event + status + assigned coach) once the booking exists. */
 export async function markConsultBooked(leadId: string, booking: Booking) {
   try {
     await recordLeadEvent(leadId, "consult_booked", { booking_id: booking.id, starts_at: booking.starts_at });
@@ -176,12 +208,27 @@ export async function markConsultBooked(leadId: string, booking: Booking) {
     console.error("[scheduling] lead event failed", err);
   }
   const admin = createAdminClient();
-  await admin.from("leads").update({ status: "consult_booked" }).eq("id", leadId).in("status", ["new", "contacted", "nurturing"]);
+  await admin
+    .from("leads")
+    .update({ status: "consult_booked" })
+    .eq("id", leadId)
+    .eq("business_id", booking.business_id)
+    .in("status", ["new", "contacted", "nurturing"]);
+  await admin
+    .from("leads")
+    .update({ assigned_coach_id: booking.coach_id })
+    .eq("id", leadId)
+    .eq("business_id", booking.business_id)
+    .is("assigned_coach_id", null);
 }
 
-/** Add someone to the waitlist for a full group session (idempotent per email). */
+/**
+ * Add someone to the waitlist for a full group session (idempotent per
+ * email). With "any coach", the person waits for the first coach's class.
+ */
 export async function joinWaitlist(input: {
   sessionType: SessionType;
+  coachId: string | null;
   startsAt: string;
   email: string;
   name?: string;
@@ -190,18 +237,25 @@ export async function joinWaitlist(input: {
   const st = input.sessionType;
   if (st.capacity <= 1) return { ok: false, error: "Waitlists are only available for group sessions." };
   if (Date.parse(input.startsAt) <= Date.now()) return { ok: false, error: "That session has already started." };
-  const taken = await seatsTaken(st.id, input.startsAt);
-  if (taken < st.capacity) return { ok: false, error: "Good news: there's a spot available. Book it now instead." };
-  const admin = createAdminClient();
-  const { error } = await admin.from("waitlist_entries").upsert(
+  const coaches = await listCoaches(st.business_id, { bookableOnly: true });
+  const offer = await isSlotOffered({ businessId: st.business_id, sessionType: st, coaches, coachId: input.coachId, startsAt: input.startsAt });
+  if (offer.offered) return { ok: false, error: "Good news: there's a spot available. Book it now instead." };
+  const coachId = offer.full ? offer.coachIds[0] : undefined;
+  if (!coachId) return { ok: false, error: "That session isn't available." };
+  if ((await seatsTaken(st.id, coachId, input.startsAt)) < st.capacity) {
+    return { ok: false, error: "Good news: there's a spot available. Book it now instead." };
+  }
+  const { error } = await createAdminClient().from("waitlist_entries").upsert(
     {
+      business_id: st.business_id,
       session_type_id: st.id,
+      coach_id: coachId,
       starts_at: new Date(input.startsAt).toISOString(),
       email: input.email.toLowerCase(),
       name: input.name ?? null,
       client_id: input.clientId,
     },
-    { onConflict: "session_type_id,starts_at,email", ignoreDuplicates: true },
+    { onConflict: "session_type_id,coach_id,starts_at,email", ignoreDuplicates: true },
   );
   if (error) return { ok: false, error: "Couldn't join the waitlist. Please try again." };
   return { ok: true };
@@ -210,11 +264,16 @@ export async function joinWaitlist(input: {
 export type RecurringResult = { booked: Booking[]; skipped: { startsAt: string; error: string }[] };
 
 /**
- * Trainer books a client into a session, optionally repeating weekly at the
- * same local wall-clock time (DST-safe) for N weeks, sharing a recurrence_group.
+ * Staff book a client into a session, optionally repeating weekly at the
+ * same local wall-clock time (DST-safe, in `timezone`) for N weeks, sharing a
+ * recurrence_group. With "any coach" each week is assigned separately
+ * (preferring the client's primary coach).
  */
 export async function bookRecurring(input: {
+  business: Pick<Business, "id">;
   sessionType: SessionType;
+  coachId: string | null;
+  preferredCoachId?: string | null;
   firstStartsAt: string;
   weeks: number;
   clientId: string;
@@ -222,25 +281,30 @@ export async function bookRecurring(input: {
   notes?: string;
   phone?: string;
   smsOptIn?: boolean;
-  trainerTimezone: string;
+  timezone: string;
 }): Promise<RecurringResult> {
   const weeks = Math.max(1, Math.min(52, input.weeks));
   const group = weeks > 1 ? randomUUID() : undefined;
-  const firstDate = localDateOf(input.firstStartsAt, input.trainerTimezone);
-  const minutes = timeToMinutes(localTimeOf(input.firstStartsAt, input.trainerTimezone));
+  const firstDate = localDateOf(input.firstStartsAt, input.timezone);
+  const minutes = timeToMinutes(localTimeOf(input.firstStartsAt, input.timezone));
+  const coaches = await listCoaches(input.sessionType.business_id, { bookableOnly: true });
   const result: RecurringResult = { booked: [], skipped: [] };
   for (let i = 0; i < weeks; i++) {
-    const startsAt = zonedTimeToUtc(addDays(firstDate, i * 7), minutes, input.trainerTimezone).toISOString();
+    const startsAt = zonedTimeToUtc(addDays(firstDate, i * 7), minutes, input.timezone).toISOString();
     const res = await bookSlot({
+      business: input.business,
       sessionType: input.sessionType,
+      coachId: input.coachId,
+      preferredCoachId: input.preferredCoachId,
       startsAt,
       clientId: input.clientId,
       notes: input.notes,
       phone: input.phone,
       smsOptIn: input.smsOptIn,
       payment: input.payment,
-      source: "trainer",
+      source: "staff",
       recurrenceGroup: group,
+      coaches,
     });
     if (res.ok) result.booked.push(res.booking);
     else result.skipped.push({ startsAt, error: res.error });

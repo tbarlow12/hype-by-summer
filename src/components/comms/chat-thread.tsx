@@ -6,7 +6,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { Alert, Avatar, Button, buttonClass, cn } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/database.types";
-import { CHAT_BUCKET, dayKey, dayLabel, kindForMime, linkify, UPLOAD_LIMITS } from "@/lib/comms/policy";
+import { CHAT_BUCKET, dayKey, dayLabel, kindForMime, linkify, messageSide, UPLOAD_LIMITS } from "@/lib/comms/policy";
 import { MESSAGE_COLUMNS, type ChatMessage, type Person } from "@/lib/comms/types";
 import { deleteChatMessage, editChatMessage, sendChatMessage, shareWorkout, startVideoCall } from "@/lib/comms/chat-actions";
 import { uploadFile } from "@/lib/comms/upload-client";
@@ -22,12 +22,18 @@ type Pending = { text: string; file: File | null; workoutLogId?: string };
 
 const PAGE_SIZE = 50;
 
+/**
+ * One client's thread with a business, shared by the whole team. Staff see
+ * every teammate's messages on "our" side with the sender's name; the client
+ * sees the team on the other side, each message labelled with who wrote it.
+ */
 export function ChatThread({
   conversationId,
   viewerId,
-  viewerIsTrainer,
+  viewerIsStaff,
   timezone,
   other,
+  people: initialPeople,
   clientId,
   initialMessages,
   initialUrls,
@@ -39,9 +45,12 @@ export function ChatThread({
 }: {
   conversationId: string;
   viewerId: string;
-  viewerIsTrainer: boolean;
+  viewerIsStaff: boolean;
   timezone: string;
+  /** Header: the client (staff view) or the business team (client view). */
   other: Person & { subtitle?: string };
+  /** Names/avatars of everyone who may appear as a sender. */
+  people: Record<string, Person>;
   clientId: string;
   initialMessages: ChatMessage[];
   initialUrls: Record<string, string>;
@@ -66,6 +75,13 @@ export function ChatThread({
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [calling, setCalling] = useState(false);
+  const [people, setPeople] = useState<Record<string, Person>>(initialPeople);
+  const lookedUp = useRef(new Set<string>(Object.keys(initialPeople)));
+  /** Messages written by the viewer's side of the thread (the team, or the client). */
+  const ours = useCallback(
+    (m: Pick<ChatMessage, "sender_id">) => messageSide(m.sender_id, clientId) === (viewerIsStaff ? "team" : "client"),
+    [clientId, viewerIsStaff],
+  );
 
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -127,7 +143,7 @@ export function ChatThread({
         (payload) => {
           const m = payload.new as ChatMessage;
           upsert(m);
-          if (m.sender_id !== viewerId) markRead();
+          if (!ours(m)) markRead();
         },
       )
       .on(
@@ -140,14 +156,35 @@ export function ChatThread({
         { event: "UPDATE", schema: "public", table: "conversations", filter: `id=eq.${conversationId}` },
         (payload) => {
           const c = payload.new as Tables<"conversations">;
-          setOtherReadAt(viewerIsTrainer ? c.client_last_read_at : c.trainer_last_read_at);
+          setOtherReadAt(viewerIsStaff ? c.client_last_read_at : c.staff_last_read_at);
         },
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [supabase, conversationId, viewerId, viewerIsTrainer, upsert, markRead]);
+  }, [supabase, conversationId, viewerIsStaff, upsert, markRead, ours]);
+
+  // --- names for senders we haven't seen (e.g. a new teammate) -------------------
+  useEffect(() => {
+    const unknown = [...new Set(messages.map((m) => m.sender_id))].filter(
+      (id): id is string => Boolean(id) && !lookedUp.current.has(id!),
+    );
+    if (!unknown.length) return;
+    for (const id of unknown) lookedUp.current.add(id);
+    void supabase
+      .from("profiles")
+      .select("id, full_name, email, avatar_url")
+      .in("id", unknown)
+      .then(({ data }) => {
+        if (!data?.length) return;
+        setPeople((prev) => {
+          const next = { ...prev };
+          for (const p of data) next[p.id] = { id: p.id, name: p.full_name || p.email || "Team member", avatarUrl: p.avatar_url };
+          return next;
+        });
+      });
+  }, [messages, supabase]);
 
   // --- attachment URLs for messages that arrived later ---------------------------
   useEffect(() => {
@@ -384,8 +421,8 @@ export function ChatThread({
     setFile(f);
   }
 
-  // The last message I sent that the other person has seen / not seen.
-  const lastMine = [...messages].reverse().find((m) => m.sender_id === viewerId && m.kind !== "system" && !m.status);
+  // The last message from our side that the other side has seen / not seen.
+  const lastMine = [...messages].reverse().find((m) => ours(m) && m.kind !== "system" && !m.status);
   const seen = Boolean(lastMine && otherReadAt && otherReadAt >= lastMine.created_at);
 
   return (
@@ -404,7 +441,7 @@ export function ChatThread({
           <p className="truncate font-semibold">{other.name}</p>
           {other.subtitle ? <p className="truncate text-xs text-zinc-500">{other.subtitle}</p> : null}
         </div>
-        {viewerIsTrainer ? (
+        {viewerIsStaff ? (
           <Button variant="outline" size="sm" onClick={call} disabled={calling} aria-label={`Start a video call with ${other.name}`}>
             <svg viewBox="0 0 20 20" className="size-4" fill="currentColor" aria-hidden="true">
               <path d="M3 5a2 2 0 012-2h7a2 2 0 012 2v1.6l2.4-1.5A1 1 0 0118 6v8a1 1 0 01-1.6.9L14 13.4V15a2 2 0 01-2 2H5a2 2 0 01-2-2V5z" />
@@ -439,15 +476,19 @@ export function ChatThread({
             <Avatar name={other.name} src={other.avatarUrl} size={56} />
             <p className="mt-3 font-semibold text-zinc-900 dark:text-zinc-100">Start the conversation</p>
             <p className="mt-1 max-w-xs">
-              {viewerIsTrainer
-                ? `Say hi to ${other.name.split(" ")[0]}: check in on training, share tips or answer questions.`
-                : "Ask your coach anything: training questions, schedule changes, how a session felt."}
+              {viewerIsStaff
+                ? `Say hi to ${other.name.split(" ")[0]}: check in on training, share tips or answer questions. Everyone on your team sees this thread.`
+                : "Ask your coaches anything: training questions, schedule changes, how a session felt."}
             </p>
           </div>
         ) : null}
         {messages.map((m, i) => {
           const day = dayKey(m.created_at, timezone);
-          const prevDay = i > 0 ? dayKey(messages[i - 1]!.created_at, timezone) : "";
+          const prev = i > 0 ? messages[i - 1]! : null;
+          const prevDay = prev ? dayKey(prev.created_at, timezone) : "";
+          const fromTeam = messageSide(m.sender_id, clientId) === "team";
+          // Label team messages with who wrote them (once per run of messages).
+          const showSender = fromTeam && (day !== prevDay || prev?.sender_id !== m.sender_id || prev?.kind === "system");
           const separator =
             day !== prevDay ? (
               <div className="flex items-center gap-3 py-3 text-xs font-medium text-zinc-500" role="separator">
@@ -465,6 +506,8 @@ export function ChatThread({
                 <Bubble
                   m={m}
                   mine={m.sender_id === viewerId}
+                  ours={ours(m)}
+                  sender={showSender ? (people[m.sender_id ?? ""] ?? { id: m.sender_id ?? "", name: "Team member", avatarUrl: null }) : null}
                   timezone={timezone}
                   url={m.attachment_path ? (urls[m.attachment_path] ?? m.localUrl) : m.localUrl}
                   receipt={m.id === lastMine?.id ? (seen ? "Seen" : "Sent") : null}
@@ -541,7 +584,7 @@ export function ChatThread({
               <path d="M15.5 9.5l-5.8 5.8a3.5 3.5 0 01-5-5l6.2-6.2a2.3 2.3 0 013.3 3.3l-6.1 6.1a1.2 1.2 0 01-1.7-1.7l5.6-5.6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </label>
-          {!viewerIsTrainer ? (
+          {!viewerIsStaff ? (
             <Button type="button" variant="ghost" className="size-10 shrink-0 px-0" onClick={() => setShareOpen((o) => !o)} aria-expanded={shareOpen} title="Share a workout">
               <span className="sr-only">Share a workout</span>
               <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
@@ -564,7 +607,7 @@ export function ChatThread({
             }}
             rows={1}
             maxLength={4000}
-            placeholder={`Message ${other.name.split(" ")[0]}…`}
+            placeholder={viewerIsStaff ? `Message ${other.name.split(" ")[0]}…` : `Message ${other.name}…`}
             className="max-h-40 min-h-10 flex-1 resize-none rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
             style={{ fieldSizing: "content" } as CSSProperties}
           />
@@ -613,6 +656,8 @@ function SystemMessage({ m, timezone }: { m: ChatMessage; timezone: string }) {
 function Bubble({
   m,
   mine,
+  ours,
+  sender,
   timezone,
   url,
   receipt,
@@ -627,7 +672,12 @@ function Bubble({
   onRetry,
 }: {
   m: LocalMessage;
+  /** Written by the viewer (can edit/delete). */
   mine: boolean;
+  /** Written by the viewer's side (right-aligned, brand-filled). */
+  ours: boolean;
+  /** Team sender label shown above the bubble. */
+  sender: Person | null;
   timezone: string;
   url?: string;
   receipt: string | null;
@@ -646,14 +696,20 @@ function Bubble({
   const canEdit = canManage && m.kind !== "workout_share";
   const bubble = cn(
     "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm sm:max-w-[70%]",
-    mine ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100",
+    ours ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100",
     deleted && "bg-transparent! text-zinc-400! italic ring-1 ring-zinc-200 dark:ring-zinc-700",
     m.status === "failed" && "opacity-70",
   );
 
   return (
-    <div className={cn("group flex flex-col py-0.5", mine ? "items-end" : "items-start")}>
-      <div className={cn("flex max-w-full items-center gap-1", mine ? "flex-row-reverse" : "flex-row")}>
+    <div className={cn("group flex flex-col py-0.5", ours ? "items-end" : "items-start")}>
+      {sender ? (
+        <div className={cn("mt-1.5 mb-0.5 flex items-center gap-1.5 px-1 text-xs font-medium text-zinc-500", ours && "flex-row-reverse")}>
+          <Avatar name={sender.name} src={sender.avatarUrl} size={20} />
+          <span className="truncate">{mine ? `${sender.name} (you)` : sender.name}</span>
+        </div>
+      ) : null}
+      <div className={cn("flex max-w-full items-center gap-1", ours ? "flex-row-reverse" : "flex-row")}>
         <div className={bubble}>
           {deleted ? (
             <p>Message deleted</p>
@@ -680,7 +736,7 @@ function Bubble({
                 <button type="button" onClick={onEditCancel}>
                   Cancel
                 </button>
-                <button type="button" onClick={onEditSave} className="rounded-full bg-white/20 px-2 py-0.5">
+                <button type="button" onClick={onEditSave} className="rounded-full bg-on-brand/20 px-2 py-0.5">
                   Save
                 </button>
               </div>
@@ -690,15 +746,15 @@ function Bubble({
               <Attachment m={m} url={url} />
               {m.kind === "workout_share" ? (
                 <div className="flex flex-col gap-1">
-                  <p className={cn("text-[11px] font-semibold uppercase tracking-wide", mine ? "text-white/80" : "text-brand")}>🏋️ Workout shared</p>
+                  <p className={cn("text-[11px] font-semibold uppercase tracking-wide", ours ? "text-on-brand/80" : "text-brand")}>🏋️ Workout shared</p>
                   {m.body ? <RichText text={m.body} /> : null}
                 </div>
               ) : m.body ? (
                 <RichText text={m.body} className={m.attachment_path || m.localUrl ? "mt-1.5" : undefined} />
               ) : null}
               {m.status === "sending" && m.progress !== undefined && m.progress < 1 ? (
-                <div className="mt-2 h-1 w-40 overflow-hidden rounded-full bg-white/30" role="progressbar" aria-valuenow={Math.round(m.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress">
-                  <div className="h-full bg-white transition-all" style={{ width: `${Math.round(m.progress * 100)}%` }} />
+                <div className="mt-2 h-1 w-40 overflow-hidden rounded-full bg-on-brand/30" role="progressbar" aria-valuenow={Math.round(m.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress">
+                  <div className="h-full bg-on-brand transition-all" style={{ width: `${Math.round(m.progress * 100)}%` }} />
                 </div>
               ) : null}
             </>

@@ -2,14 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getClientTrainerId, requireClient } from "@/lib/auth";
+import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { notify } from "@/lib/notify";
 import { displayName } from "@/lib/format";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
 import { DIFFICULTY_LABELS } from "@/lib/training/adherence";
 import { addDays, todayInTz } from "@/lib/training/dates";
-import { getLastPerformance, type LastSet } from "@/lib/training/server";
+import { getLastPerformance, notifyResponsibleCoach, type LastSet } from "@/lib/training/server";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -46,7 +45,7 @@ const logSchema = z.object({
 export type LogWorkoutInput = z.input<typeof logSchema>;
 
 export async function logWorkout(input: LogWorkoutInput): Promise<Result<{ logId: string }>> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const parsed = logSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid workout" };
   const { sets, ...log } = parsed.data;
@@ -56,37 +55,43 @@ export async function logWorkout(input: LogWorkoutInput): Promise<Result<{ logId
   const supabase = await createClient();
   let workoutName: string | null = null;
   let programId: string | null = null;
+  let programCoachId: string | null = null;
   if (log.workout_id) {
     const { data: w } = await supabase
       .from("program_workouts")
-      .select("name, program_id, programs!inner(client_id)")
+      .select("name, program_id, programs!inner(client_id, business_id, coach_id)")
       .eq("id", log.workout_id)
       .eq("programs.client_id", profile.id)
+      .eq("programs.business_id", business.id)
       .maybeSingle();
     if (!w) return { ok: false, error: "That workout isn't in your program." };
     workoutName = w.name;
     programId = w.program_id;
+    programCoachId = w.programs.coach_id;
   }
 
-  const { data: logId, error } = await supabase.rpc("log_workout", { p_log: log, p_sets: sets });
+  // The business comes from the host (requireClient), never from the browser.
+  const { data: logId, error } = await supabase.rpc("log_workout", {
+    p_log: { ...log, business_id: business.id },
+    p_sets: sets,
+  });
   if (error) return { ok: false, error: error.message };
 
-  const trainerId = await getClientTrainerId(profile.id);
-  if (trainerId) {
-    const flags = [
-      log.pain_flag ? "reported pain" : null,
-      log.difficulty_rating ? DIFFICULTY_LABELS[log.difficulty_rating]!.toLowerCase() : null,
-      log.session_rpe ? `RPE ${log.session_rpe}` : null,
-    ].filter(Boolean);
-    await notify({
-      userId: trainerId,
-      type: log.pain_flag ? "workout_logged_pain" : "workout_logged",
-      title: `${displayName(profile)} logged ${workoutName ? `“${workoutName}”` : "a freestyle workout"}${log.pain_flag ? " (pain reported)" : ""}`,
-      body: [flags.join(" · "), log.feedback].filter(Boolean).join("\n") || undefined,
-      link: programId ? `/coach/programs/${programId}#log-${logId}` : `/coach/clients/${profile.id}`,
-      email: log.pain_flag,
-    });
-  }
+  const flags = [
+    log.pain_flag ? "reported pain" : null,
+    log.difficulty_rating ? DIFFICULTY_LABELS[log.difficulty_rating]!.toLowerCase() : null,
+    log.session_rpe ? `RPE ${log.session_rpe}` : null,
+  ].filter(Boolean);
+  await notifyResponsibleCoach({
+    businessId: business.id,
+    clientId: profile.id,
+    programCoachId,
+    type: log.pain_flag ? "workout_logged_pain" : "workout_logged",
+    title: `${displayName(profile)} logged ${workoutName ? `“${workoutName}”` : "a freestyle workout"}${log.pain_flag ? " (pain reported)" : ""}`,
+    body: [flags.join(" · "), log.feedback].filter(Boolean).join("\n") || undefined,
+    link: programId ? `/coach/programs/${programId}#log-${logId}` : `/coach/clients/${profile.id}`,
+    email: log.pain_flag,
+  });
   revalidatePath("/me/plan");
   revalidatePath("/me/progress");
   return { ok: true, data: { logId } };
@@ -94,10 +99,10 @@ export async function logWorkout(input: LogWorkoutInput): Promise<Result<{ logId
 
 /** Prefill source for exercises added on the fly (freestyle logging). */
 export async function lastPerformance(exerciseId: string): Promise<{ performed_on: string; sets: LastSet[] } | null> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   if (!z.uuid().safeParse(exerciseId).success) return null;
   const supabase = await createClient();
-  return (await getLastPerformance(supabase, profile.id, [exerciseId])).get(exerciseId) ?? null;
+  return (await getLastPerformance(supabase, business.id, profile.id, [exerciseId])).get(exerciseId) ?? null;
 }
 
 const feedbackSchema = z.object({
@@ -112,20 +117,22 @@ const feedbackSchema = z.object({
 });
 
 export async function submitProgramFeedback(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const parsed = parseForm(feedbackSchema, formData);
   if (parsed.error) return parsed.error;
   const d = parsed.data;
   const supabase = await createClient();
   const { data: program } = await supabase
     .from("programs")
-    .select("id, name, trainer_id, duration_weeks")
+    .select("id, name, coach_id, duration_weeks")
     .eq("id", d.program_id)
+    .eq("business_id", business.id)
     .eq("client_id", profile.id)
     .maybeSingle();
   if (!program) return fail("Program not found.");
   const week = d.week && d.week >= 1 && d.week <= program.duration_weeks ? d.week : null;
   const { error } = await supabase.from("program_feedback").insert({
+    business_id: business.id,
     program_id: program.id,
     client_id: profile.id,
     week,
@@ -137,8 +144,10 @@ export async function submitProgramFeedback(_: ActionState, formData: FormData):
     requested_changes: d.requested_changes ?? null,
   });
   if (error) return fail(error.message);
-  await notify({
-    userId: program.trainer_id,
+  await notifyResponsibleCoach({
+    businessId: business.id,
+    clientId: profile.id,
+    programCoachId: program.coach_id,
     type: "program_feedback",
     title: `${displayName(profile)} left feedback on ${program.name}${week ? ` (week ${week})` : ""}`,
     body: [`${d.overall_rating}/5`, d.difficulty.replace("_", " "), `volume ${d.volume.replace("_", " ")}`, d.requested_changes]

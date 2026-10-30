@@ -1,25 +1,29 @@
 import type { MetadataRoute } from "next";
-import { BRAND_NAME } from "@/lib/env";
+import { brandOf, getBusiness } from "@/lib/tenant";
+import { iconVersion } from "@/lib/clients/pwa";
 
-export default function manifest(): MetadataRoute.Manifest {
+// Each business's site installs as its own app: its name, colors and icon.
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const business = await getBusiness();
+  const brand = brandOf(business);
+  const v = iconVersion(business);
+  const name = brand.name;
   return {
     id: "/me",
-    name: BRAND_NAME,
-    short_name: BRAND_NAME.length > 12 ? BRAND_NAME.split(/\s+/)[0] : BRAND_NAME,
-    description: "Book sessions, follow your training plan, log workouts and message your coach.",
+    name,
+    short_name: name.length > 12 ? name.split(/\s+/)[0]!.slice(0, 12) : name,
+    description: business?.headline ?? "Book sessions, follow your training plan, log workouts and message your coach.",
     start_url: "/me",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
     background_color: "#ffffff",
-    theme_color: "#e11d48",
+    theme_color: brand.palette.brand,
     categories: ["health", "fitness", "lifestyle"],
     icons: [
-      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
-      { src: "/icon-maskable.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
-      { src: "/pwa-icon/192", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/pwa-icon/512", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/pwa-icon/512?maskable=1", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: `/pwa-icon/192?v=${v}`, sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: `/pwa-icon/512?v=${v}`, sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: `/pwa-icon/512?maskable=1&v=${v}`, sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
       { name: "Book a session", url: "/me/book" },

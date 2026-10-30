@@ -4,14 +4,14 @@ import { ActionForm, SubmitButton } from "@/components/form";
 import { Alert, Badge, Card, CardTitle, Checkbox, EmptyState, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/training/confirm-submit";
 import { AdherenceBars, FlagBadges, ProgramFeedbackItem, WorkoutLogItem } from "@/components/training/feedback";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { displayName } from "@/lib/format";
 import { adherenceByWeek, feedbackFlags, adherenceToDate } from "@/lib/training/adherence";
 import { respondToProgramFeedback, respondToWorkoutLog } from "@/lib/training/coach-actions";
 import { longDateLabel, programPosition, todayInTz } from "@/lib/training/dates";
-import { EXERCISE_FIELDS, loadLogs, loadProgramTree } from "@/lib/training/server";
-import { assignProgram, deleteProgram, duplicateProgram, setProgramStatus, updateProgramMeta } from "../actions";
+import { EXERCISE_FIELDS, exerciseLibraryFilter, loadLogs, loadProgramTree, loadRoster, loadStaff } from "@/lib/training/server";
+import { assignProgram, deleteProgram, duplicateProgram, setProgramCoach, setProgramStatus, updateProgramMeta } from "../actions";
 import { ProgramBuilder } from "./program-builder";
 
 export const metadata = { title: "Program builder" };
@@ -21,38 +21,41 @@ const STATUS_TONE = { draft: "neutral", active: "green", completed: "blue", arch
 export default async function ProgramPage({ params, searchParams }: PageProps<"/coach/programs/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
-  const profile = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const supabase = await createClient();
-  const tree = await loadProgramTree(supabase, id);
-  if (!tree || tree.program.trainer_id !== profile.id) notFound();
+  const tree = await loadProgramTree(supabase, business.id, id);
+  if (!tree) notFound();
   const { program, workouts } = tree;
   const isTemplate = !program.client_id;
   const today = todayInTz(profile.timezone);
 
-  const [{ data: library }, clientRes, rosterRes, logs, feedbackRes] = await Promise.all([
+  const [{ data: library }, clientRes, rosterRes, logs, feedbackRes, staff] = await Promise.all([
     supabase
       .from("exercises")
       .select(EXERCISE_FIELDS)
-      .or(`trainer_id.is.null,trainer_id.eq.${profile.id}`)
+      .or(exerciseLibraryFilter(business.id))
       .order("name")
       .limit(1000),
     program.client_id
       ? supabase.from("profiles").select("id, full_name, email, timezone").eq("id", program.client_id).maybeSingle()
       : Promise.resolve({ data: null }),
-    isTemplate
-      ? supabase
-          .from("trainer_clients")
-          .select("client_id, client:profiles!trainer_clients_client_id_fkey(full_name, email)")
-          .eq("trainer_id", profile.id)
-          .in("status", ["active", "invited", "paused"])
-      : Promise.resolve({ data: [] }),
-    program.client_id ? loadLogs(supabase, { clientId: program.client_id, programId: program.id, limit: 30 }) : Promise.resolve([]),
+    isTemplate ? loadRoster(supabase, business.id) : Promise.resolve([]),
     program.client_id
-      ? supabase.from("program_feedback").select("*").eq("program_id", program.id).order("created_at", { ascending: false })
+      ? loadLogs(supabase, { businessId: business.id, clientId: program.client_id, programId: program.id, limit: 30 })
+      : Promise.resolve([]),
+    program.client_id
+      ? supabase
+          .from("program_feedback")
+          .select("*, responder:profiles!program_feedback_responded_by_fkey(full_name)")
+          .eq("business_id", business.id)
+          .eq("program_id", program.id)
+          .order("created_at", { ascending: false })
       : Promise.resolve({ data: [] }),
+    loadStaff(business.id),
   ]);
   const client = clientRes.data;
-  const roster = (rosterRes.data ?? []).sort((a, b) => displayName(a.client).localeCompare(displayName(b.client)));
+  const roster = rosterRes.sort((a, b) => displayName(a.client).localeCompare(displayName(b.client)));
+  const coach = program.coach_id ? staff.find((m) => m.user_id === program.coach_id) : null;
   const feedback = feedbackRes.data ?? [];
 
   const position = program.start_date ? programPosition(program.start_date, program.duration_weeks, today) : null;
@@ -90,7 +93,7 @@ export default async function ProgramPage({ params, searchParams }: PageProps<"/
         }
         description={
           isTemplate ? (
-            `Template · ${program.duration_weeks} weeks · ${workouts.length} workouts`
+            `Template · ${program.duration_weeks} weeks · ${workouts.length} workouts${coach ? ` · by ${displayName(coach)}` : ""}`
           ) : (
             <>
               For{" "}
@@ -99,6 +102,7 @@ export default async function ProgramPage({ params, searchParams }: PageProps<"/
               </Link>
               {program.start_date ? ` · starts ${longDateLabel(program.start_date)}` : ""}
               {position && program.status === "active" ? ` · week ${position.week} of ${program.duration_weeks}` : ""}
+              {` · coach ${coach ? displayName(coach) : "unassigned"}`}
             </>
           )
         }
@@ -159,6 +163,26 @@ export default async function ProgramPage({ params, searchParams }: PageProps<"/
                 <SubmitButton size="sm">Save details</SubmitButton>
               </div>
             </ActionForm>
+            {staff.length > 1 || !coach ? (
+              <ActionForm action={setProgramCoach.bind(null, program.id)} className="mt-4 flex flex-wrap items-end gap-2 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                <Field
+                  label={isTemplate ? "Author" : "Responsible coach"}
+                  htmlFor="coach_id"
+                  hint={isTemplate ? undefined : "Gets this client's workout logs and program feedback."}
+                  className="min-w-48 flex-1"
+                >
+                  <Select id="coach_id" name="coach_id" defaultValue={coach?.user_id ?? profile.id}>
+                    {staff.map((m) => (
+                      <option key={m.user_id} value={m.user_id}>
+                        {displayName(m)}
+                        {m.user_id === profile.id ? " (you)" : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <SubmitButton size="sm" variant="outline">Save coach</SubmitButton>
+              </ActionForm>
+            ) : null}
           </details>
         </Card>
 

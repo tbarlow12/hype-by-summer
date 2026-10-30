@@ -1,18 +1,20 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-// Signed, expiring download links for lead magnets: base64url("lead:magnet:exp").sig
-// where sig = HMAC-SHA256(secret, "dl1|" + payload). Pure (secret passed in).
+// Signed, expiring download links for lead magnets:
+// base64url("business:lead:magnet:exp").sig where sig = HMAC-SHA256(secret, "dl2|" + payload).
+// The business is part of the claims so a link only works on the site of the
+// business that issued it. Pure (secret passed in).
 
-export type DownloadClaims = { leadId: string; magnetId: string; exp: number };
+export type DownloadClaims = { businessId: string; leadId: string; magnetId: string; exp: number };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const b64 = (s: string | Buffer) => Buffer.from(s).toString("base64url");
 const sign = (payload: string, secret: string) =>
-  createHmac("sha256", secret).update(`dl1|${payload}`).digest("base64url");
+  createHmac("sha256", secret).update(`dl2|${payload}`).digest("base64url");
 
 export function signDownloadToken(claims: DownloadClaims, secret: string): string {
   if (!secret) throw new Error("Missing token secret");
-  const payload = b64(`${claims.leadId}:${claims.magnetId}:${Math.floor(claims.exp)}`);
+  const payload = b64(`${claims.businessId}:${claims.leadId}:${claims.magnetId}:${Math.floor(claims.exp)}`);
   return `${payload}.${sign(payload, secret)}`;
 }
 
@@ -25,13 +27,14 @@ export function verifyDownloadToken(token: string | null | undefined, secret: st
   const expected = Buffer.from(sign(payload, secret));
   const given = Buffer.from(sig);
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) return { ok: false, reason: "bad_signature" };
-  const [leadId, magnetId, expRaw, more] = Buffer.from(payload, "base64url").toString("utf8").split(":");
+  const [businessId, leadId, magnetId, expRaw, more] = Buffer.from(payload, "base64url").toString("utf8").split(":");
   const exp = Number(expRaw);
-  if (!leadId || !magnetId || more !== undefined || !UUID.test(leadId) || !UUID.test(magnetId) || !Number.isFinite(exp)) {
+  const ids = [businessId, leadId, magnetId];
+  if (more !== undefined || !ids.every((id) => id && UUID.test(id)) || !expRaw || !Number.isFinite(exp)) {
     return { ok: false, reason: "malformed" };
   }
   if (exp * 1000 < now) return { ok: false, reason: "expired" };
-  return { ok: true, claims: { leadId, magnetId, exp } };
+  return { ok: true, claims: { businessId: businessId!, leadId: leadId!, magnetId: magnetId!, exp } };
 }
 
 /** Expiry timestamp (seconds) `days` from now. */

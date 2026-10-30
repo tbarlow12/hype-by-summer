@@ -133,6 +133,28 @@ export function markerPercent(seconds: number, duration: number): number {
   return Math.min(100, Math.max(0, (seconds / duration) * 100));
 }
 
+/**
+ * Team inbox filter: threads with messages, optionally only clients whose
+ * primary coach is `mineFor`, matching a name/email search.
+ */
+export function filterInbox<
+  T extends { primary_coach_id: string | null; last_message_at: string | null; client_name: string | null; client_email: string | null },
+>(rows: T[], opts: { mineFor?: string | null; q?: string }): T[] {
+  const q = (opts.q ?? "").trim().toLowerCase();
+  return rows.filter(
+    (r) =>
+      Boolean(r.last_message_at) &&
+      (!opts.mineFor || r.primary_coach_id === opts.mineFor) &&
+      (!q || `${r.client_name ?? ""} ${r.client_email ?? ""}`.toLowerCase().includes(q)),
+  );
+}
+
+/** Which side of a shared team thread wrote a message. */
+export function messageSide(senderId: string | null, clientId: string): "system" | "client" | "team" {
+  if (!senderId) return "system";
+  return senderId === clientId ? "client" : "team";
+}
+
 /** Short preview for inbox rows. */
 export function messagePreview(m: { body: string | null; kind: string; deleted?: boolean }): string {
   if (m.deleted) return "Message deleted";

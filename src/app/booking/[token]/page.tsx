@@ -5,8 +5,10 @@ import { Alert, Badge, buttonClass, Card, CardTitle, Field, Textarea } from "@/c
 import { ReschedulePicker } from "@/components/scheduling/reschedule-picker";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getProfile } from "@/lib/auth";
+import { requireBusiness } from "@/lib/tenant";
+import { policyOf } from "@/lib/scheduling/availability";
 import { formatDateTime, formatDuration, formatMoney } from "@/lib/format";
-import { attendeeOf, googleCalendarLink, loadBookingContext, locationText, trainerName } from "@/lib/scheduling/lifecycle";
+import { attendeeOf, googleCalendarLink, loadBookingContext, locationText } from "@/lib/scheduling/lifecycle";
 import { canReschedule, decideCancellation, describePolicy } from "@/lib/scheduling/policy";
 import { STATUS_LABELS, STATUS_TONES } from "@/lib/scheduling/labels";
 import { localDateOf } from "@/lib/scheduling/tz";
@@ -18,11 +20,13 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
   const { token } = await params;
   const { status: flash } = await searchParams;
   if (!/^[a-f0-9]{16,64}$/.test(token)) notFound();
+  const business = await requireBusiness();
   const admin = createAdminClient();
-  const { data: row } = await admin.from("bookings").select("id").eq("manage_token", token).maybeSingle();
+  const { data: row } = await admin.from("bookings").select("id").eq("business_id", business.id).eq("manage_token", token).maybeSingle();
   const ctx = row ? await loadBookingContext(row.id) : null;
   if (!ctx) notFound();
-  const { booking, sessionType, trainer } = ctx;
+  const { booking, sessionType, coach } = ctx;
+  const policy = policyOf(business);
   const profile = await getProfile();
   const attendee = attendeeOf(ctx);
   const tz = profile?.timezone ?? attendee.timezone;
@@ -30,17 +34,22 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
 
   const cancelPreview = decideCancellation({
     booking: { ...booking, is_consultation: sessionType.is_consultation },
-    policy: trainer,
+    policy,
     now,
     actor: "client",
   });
-  const reschedule = canReschedule({ booking, policy: trainer, now, actor: "client" });
+  const reschedule = canReschedule({ booking, policy, now, actor: "client" });
   const upcoming = Date.parse(booking.ends_at) > now.getTime();
   const active = booking.status === "confirmed" || booking.status === "pending_payment";
 
   let replacement: string | null = null;
   if (booking.cancel_reason === "rescheduled") {
-    const { data } = await admin.from("bookings").select("manage_token").eq("rescheduled_from", booking.id).maybeSingle();
+    const { data } = await admin
+      .from("bookings")
+      .select("manage_token")
+      .eq("business_id", business.id)
+      .eq("rescheduled_from", booking.id)
+      .maybeSingle();
     replacement = data?.manage_token ?? null;
   }
 
@@ -63,7 +72,7 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm text-zinc-500">{trainer.business_name}</p>
+            <p className="text-sm text-zinc-500">{business.name}</p>
             <h1 className="text-2xl font-bold tracking-tight">{sessionType.name}</h1>
           </div>
           <Badge tone={STATUS_TONES[booking.status]}>{STATUS_LABELS[booking.status]}</Badge>
@@ -79,7 +88,7 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
           <div>
             <dt className="text-zinc-500">Where</dt>
             <dd className="font-medium break-words">{booking.location_type === "virtual" ? "Video call" : locationText(ctx)}</dd>
-            <dd>{formatDuration(sessionType.duration_minutes)} with {trainerName(trainer)}</dd>
+            <dd>{formatDuration(sessionType.duration_minutes)} with {coach.name}</dd>
           </div>
           <div>
             <dt className="text-zinc-500">Booked for</dt>
@@ -93,10 +102,10 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
                 : booking.payment_method === "free" || booking.price_cents === 0
                   ? "Free"
                   : booking.payment_method === "pay_later"
-                    ? `${formatMoney(booking.price_cents)} due at the session`
+                    ? `${formatMoney(booking.price_cents, sessionType.currency)} due at the session`
                     : booking.status === "pending_payment"
-                      ? `${formatMoney(booking.price_cents)} (awaiting payment)`
-                      : `${formatMoney(booking.price_cents)} paid`}
+                      ? `${formatMoney(booking.price_cents, sessionType.currency)} (awaiting payment)`
+                      : `${formatMoney(booking.price_cents, sessionType.currency)} paid`}
             </dd>
           </div>
         </dl>
@@ -135,8 +144,8 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
           {reschedule.allowed ? (
             <div className="mt-4">
               <ReschedulePicker
-                trainerSlug={trainer.slug}
                 sessionSlug={sessionType.slug}
+                coach={booking.coach_id}
                 fallbackTimezone={tz}
                 initialMonth={localDateOf(now, tz).slice(0, 7)}
                 manageToken={booking.manage_token}
@@ -168,10 +177,10 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
         </Card>
       ) : null}
 
-      <p className="text-center text-xs text-zinc-500">{describePolicy(trainer)}</p>
+      <p className="text-center text-xs text-zinc-500">{describePolicy(policy)}</p>
       <p className="text-center text-sm">
-        <Link href={`/book/${trainer.slug}`} className="font-medium text-brand hover:underline">
-          Book another session
+        <Link href={`/book/${sessionType.slug}`} className="font-medium text-brand hover:underline">
+          Book again
         </Link>
       </p>
     </div>

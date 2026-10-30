@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getProfile } from "@/lib/auth";
+import { getMembership, getProfile, isManager } from "@/lib/auth";
+import { brandOf, getBusiness } from "@/lib/tenant";
 import { createClient } from "@/lib/supabase/server";
 import { displayName } from "@/lib/format";
 import { isSmsConfigured } from "@/lib/sms";
@@ -10,33 +11,36 @@ import { AUDIENCES, CHANNELS, audienceCounts, deliverBroadcast, resolveAudience 
 
 export type AudiencePreview = { total: number; inApp: number; email: number; sms: number; smsConfigured: boolean };
 
-async function trainer() {
-  const profile = await getProfile();
-  return profile && profile.role !== "client" ? profile : null;
+/** Broadcasts are for owners/admins of the current business only. */
+async function manager() {
+  const [profile, business, membership] = await Promise.all([getProfile(), getBusiness(), getMembership()]);
+  if (!profile || !business || !isManager(membership)) return null;
+  return { profile, business };
 }
 
 export async function previewAudience(audience: string): Promise<{ ok: true; preview: AudiencePreview } | { ok: false; error: string }> {
-  const profile = await trainer();
-  if (!profile) return { ok: false, error: "Not allowed." };
+  const ctx = await manager();
+  if (!ctx) return { ok: false, error: "Not allowed." };
   const parsed = z.enum(AUDIENCES).safeParse(audience);
   if (!parsed.success) return { ok: false, error: "Unknown audience." };
-  const recipients = await resolveAudience(profile.id, parsed.data);
+  const recipients = await resolveAudience(ctx.business.id, parsed.data);
   return { ok: true, preview: { ...audienceCounts(recipients), smsConfigured: isSmsConfigured() } };
 }
 
 const sendSchema = z.object({
-    audience: z.enum(AUDIENCES),
-    subject: z.string().trim().min(1, "Add a subject.").max(150),
-    body: z.string().trim().min(1, "Write your message.").max(10000),
-    smsBody: z.string().trim().max(300, "SMS text must be 300 characters or fewer.").optional(),
-    channels: z.array(z.enum(CHANNELS)).min(1, "Pick at least one channel."),
-  });
+  audience: z.enum(AUDIENCES),
+  subject: z.string().trim().min(1, "Add a subject.").max(150),
+  body: z.string().trim().min(1, "Write your message.").max(10000),
+  smsBody: z.string().trim().max(300, "SMS text must be 300 characters or fewer.").optional(),
+  channels: z.array(z.enum(CHANNELS)).min(1, "Pick at least one channel."),
+});
 
 export async function sendBroadcast(
   input: z.input<typeof sendSchema>,
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
-  const profile = await trainer();
-  if (!profile) return { ok: false, error: "Not allowed." };
+  const ctx = await manager();
+  if (!ctx) return { ok: false, error: "Not allowed." };
+  const { profile, business } = ctx;
   const parsed = sendSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid broadcast." };
   const v = parsed.data;
@@ -44,7 +48,7 @@ export async function sendBroadcast(
   const channels = v.audience === "leads" ? v.channels.filter((c) => c === "email") : v.channels;
   if (!channels.length) return { ok: false, error: "Leads can only be reached by email." };
 
-  const recipients = await resolveAudience(profile.id, v.audience);
+  const recipients = await resolveAudience(business.id, v.audience);
   if (!recipients.length) return { ok: false, error: "Nobody is in that audience yet." };
   const counts = audienceCounts(recipients);
   const smsBody = (v.smsBody || `${v.subject}: ${v.body}`).slice(0, 300);
@@ -53,7 +57,8 @@ export async function sendBroadcast(
   const { data: row, error } = await supabase
     .from("broadcasts")
     .insert({
-      trainer_id: profile.id,
+      business_id: business.id,
+      sent_by: profile.id,
       audience: v.audience,
       subject: v.subject,
       body: v.body,
@@ -67,9 +72,9 @@ export async function sendBroadcast(
 
   const result = await deliverBroadcast({
     broadcastId: row.id,
-    trainerId: profile.id,
-    trainerName: displayName(profile),
-    trainerEmail: profile.email,
+    brand: { ...brandOf(business), businessId: business.id },
+    senderName: displayName(profile),
+    replyTo: business.support_email ?? profile.email,
     subject: v.subject,
     body: v.body,
     smsBody,

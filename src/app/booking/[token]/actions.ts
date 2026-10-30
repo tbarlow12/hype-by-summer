@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getProfile } from "@/lib/auth";
+import { requireBusiness } from "@/lib/tenant";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fail, ok, parseForm, type ActionState } from "@/lib/actions";
 import { cancelBooking, rescheduleBooking, type Actor } from "@/lib/scheduling/lifecycle";
@@ -11,9 +12,18 @@ import { createBookingCheckout } from "@/lib/payments/checkout";
 
 const token = z.string().regex(/^[a-f0-9]{16,64}$/, "Invalid link");
 
-/** The manage token is the credential; the signed-in client (if it's theirs) is recorded as actor. */
+/**
+ * The manage token is the credential (scoped to the business this host
+ * serves); the signed-in client (if it's theirs) is recorded as actor.
+ */
 async function bookingForToken(t: string) {
-  const { data } = await createAdminClient().from("bookings").select("id, client_id").eq("manage_token", t).maybeSingle();
+  const business = await requireBusiness();
+  const { data } = await createAdminClient()
+    .from("bookings")
+    .select("id, client_id")
+    .eq("business_id", business.id)
+    .eq("manage_token", t)
+    .maybeSingle();
   if (!data) return null;
   const profile = await getProfile();
   const actor: Actor =
@@ -48,9 +58,11 @@ export async function rescheduleByTokenAction(_: ActionState, formData: FormData
 export async function payByTokenAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = parseForm(z.object({ token }), formData);
   if (parsed.error) return parsed.error;
+  const business = await requireBusiness();
   const { data: booking } = await createAdminClient()
     .from("bookings")
     .select("id, status, hold_expires_at")
+    .eq("business_id", business.id)
     .eq("manage_token", parsed.data.token)
     .maybeSingle();
   if (!booking || booking.status !== "pending_payment") return fail("This booking no longer needs payment.");

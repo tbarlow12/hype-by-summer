@@ -6,7 +6,7 @@ import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDuration } from "@/lib/format";
 import { longDateLabel, programWorkoutDate, todayInTz } from "@/lib/training/dates";
-import { EXERCISE_FIELDS, getLastPerformance, loadLogs, loadWorkout, preferredUnit } from "@/lib/training/server";
+import { EXERCISE_FIELDS, exerciseLibraryFilter, getLastPerformance, loadLogs, loadWorkout, preferredUnit } from "@/lib/training/server";
 import { blocksForWorkout, toLoggerExercise } from "../blocks";
 import { WorkoutLogger } from "../workout-logger";
 
@@ -14,7 +14,7 @@ export const metadata = { title: "Workout" };
 
 export default async function WorkoutPage({ params }: PageProps<"/me/plan/workouts/[id]">) {
   const { id } = await params;
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const supabase = await createClient();
   const workout = await loadWorkout(supabase, id);
   if (!workout) notFound();
@@ -22,6 +22,7 @@ export default async function WorkoutPage({ params }: PageProps<"/me/plan/workou
     .from("programs")
     .select("id, name, start_date, client_id, status")
     .eq("id", workout.program_id)
+    .eq("business_id", business.id)
     .eq("client_id", profile.id)
     .maybeSingle();
   if (!program) notFound();
@@ -30,10 +31,10 @@ export default async function WorkoutPage({ params }: PageProps<"/me/plan/workou
   const date = program.start_date ? programWorkoutDate(program.start_date, workout.week, workout.day) : null;
   const exerciseIds = [...new Set(workout.exercises.map((e) => e.exercise_id))];
   const [last, unit, previous, { data: library }] = await Promise.all([
-    getLastPerformance(supabase, profile.id, exerciseIds),
-    preferredUnit(supabase, profile.id),
-    loadLogs(supabase, { clientId: profile.id, programId: program.id, limit: 100 }),
-    supabase.from("exercises").select(EXERCISE_FIELDS).order("name").limit(1000),
+    getLastPerformance(supabase, business.id, profile.id, exerciseIds),
+    preferredUnit(supabase, business.id, profile.id),
+    loadLogs(supabase, { businessId: business.id, clientId: profile.id, programId: program.id, limit: 100 }),
+    supabase.from("exercises").select(EXERCISE_FIELDS).or(exerciseLibraryFilter(business.id)).order("name").limit(1000),
   ]);
   const pastLogs = previous.filter((l) => l.workout_id === workout.id);
   const blocks = blocksForWorkout(workout, last, unit);

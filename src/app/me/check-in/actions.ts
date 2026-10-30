@@ -2,12 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getClientTrainerId, requireClient } from "@/lib/auth";
+import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { notify } from "@/lib/notify";
 import { displayName } from "@/lib/format";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
 import { todayInTz, weekStartMonday } from "@/lib/training/dates";
+import { getActiveProgram, notifyResponsibleCoach } from "@/lib/training/server";
 
 const rating = z
   .union([z.literal(""), z.coerce.number().int().min(1).max(5)])
@@ -30,11 +30,10 @@ const schema = z.object({
 });
 
 export async function submitCheckIn(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireClient();
+  // The business is the one whose site this is (never sent by the browser).
+  const { profile, business } = await requireClient();
   const parsed = parseForm(schema, formData);
   if (parsed.error) return parsed.error;
-  const trainerId = await getClientTrainerId(profile.id);
-  if (!trainerId) return fail("You're not connected to a coach yet.");
   const today = todayInTz(profile.timezone);
   const week_of = weekStartMonday(today);
   const d = parsed.data;
@@ -43,14 +42,14 @@ export async function submitCheckIn(_: ActionState, formData: FormData): Promise
   const { data: existing } = await supabase
     .from("check_ins")
     .select("id")
+    .eq("business_id", business.id)
     .eq("client_id", profile.id)
-    .eq("trainer_id", trainerId)
     .eq("week_of", week_of)
     .maybeSingle();
 
   const row = {
+    business_id: business.id,
     client_id: profile.id,
-    trainer_id: trainerId,
     week_of,
     body_weight: d.body_weight,
     sleep_quality: d.sleep_quality,
@@ -72,16 +71,20 @@ export async function submitCheckIn(_: ActionState, formData: FormData): Promise
     const { data: metric } = await supabase
       .from("body_metrics")
       .select("id, weight")
+      .eq("business_id", business.id)
       .eq("client_id", profile.id)
       .eq("measured_on", today)
       .limit(1)
       .maybeSingle();
-    if (!metric) await supabase.from("body_metrics").insert({ client_id: profile.id, measured_on: today, weight: d.body_weight });
+    if (!metric) await supabase.from("body_metrics").insert({ business_id: business.id, client_id: profile.id, measured_on: today, weight: d.body_weight });
     else if (metric.weight == null) await supabase.from("body_metrics").update({ weight: d.body_weight }).eq("id", metric.id);
   }
 
-  await notify({
-    userId: trainerId,
+  const program = await getActiveProgram(supabase, business.id, profile.id);
+  await notifyResponsibleCoach({
+    businessId: business.id,
+    clientId: profile.id,
+    programCoachId: program?.coach_id,
     type: "check_in",
     title: existing ? `${displayName(profile)} updated their weekly check-in` : `${displayName(profile)} checked in`,
     body: [d.questions ? `Question: ${d.questions}` : null, d.struggles ? `Struggles: ${d.struggles}` : null].filter(Boolean).join("\n") || undefined,

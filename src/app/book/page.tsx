@@ -1,11 +1,14 @@
-import { redirect } from "next/navigation";
-import { EmptyState } from "@/components/ui";
-import { getPrimaryTrainer } from "@/lib/trainer";
+import type { Metadata } from "next";
+import { Storefront } from "@/components/scheduling/storefront";
+import { publicBookingContext } from "@/lib/scheduling/public";
 
-export const metadata = { title: "Book a session" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { business } = await publicBookingContext();
+  return { title: `Book with ${business.name}` };
+}
 
-export default async function BookIndexPage() {
-  const trainer = await getPrimaryTrainer();
-  if (trainer) redirect(`/book/${trainer.slug}`);
-  return <EmptyState title="Booking isn't open yet" description="Check back soon to book your first session." />;
+/** /book[?coach=<id|slug>]: the current business's booking page. */
+export default async function BookIndexPage({ searchParams }: PageProps<"/book">) {
+  const { coach } = await searchParams;
+  return <Storefront coach={typeof coach === "string" ? coach : undefined} />;
 }

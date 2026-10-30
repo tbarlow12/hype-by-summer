@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { renderEmail, type EmailInput } from "@/lib/email";
 import { serverEnv } from "@/lib/env.server";
+import type { Brand } from "@/lib/tenant";
 import { sendSms } from "@/lib/sms";
 import { broadcastEmail, unsubscribeHeaders } from "@/lib/emails/broadcast";
 
@@ -23,14 +24,18 @@ type ClientRecipient = { kind: "client"; profileId: string; email: string; name:
 type LeadRecipient = { kind: "lead"; leadId: string; email: string; name: string | null; unsubscribeToken: string };
 export type Recipient = ClientRecipient | LeadRecipient;
 
-/** Resolve who a broadcast reaches, scoped to the signed-in trainer (RLS client). */
-export async function resolveAudience(trainerId: string, audience: Audience): Promise<Recipient[]> {
+/**
+ * Resolve who a broadcast reaches within one business (RLS client; the caller
+ * is a manager of `businessId`). Leads only with marketing consent and not
+ * unsubscribed.
+ */
+export async function resolveAudience(businessId: string, audience: Audience): Promise<Recipient[]> {
   const supabase = await createClient();
   if (audience === "leads") {
     const { data } = await supabase
       .from("leads")
       .select("id, email, first_name, unsubscribe_token")
-      .eq("trainer_id", trainerId)
+      .eq("business_id", businessId)
       .eq("marketing_consent", true)
       .is("unsubscribed_at", null)
       .limit(10000);
@@ -48,11 +53,11 @@ export async function resolveAudience(trainerId: string, audience: Audience): Pr
     const { data } = await supabase
       .from("subscriptions")
       .select("client_id")
-      .eq("trainer_id", trainerId)
+      .eq("business_id", businessId)
       .in("status", ["active", "trialing", "past_due"]);
     clientIds = [...new Set((data ?? []).map((s) => s.client_id))];
   } else {
-    let q = supabase.from("trainer_clients").select("client_id").eq("trainer_id", trainerId);
+    let q = supabase.from("business_clients").select("client_id").eq("business_id", businessId);
     q = audience === "active_clients" ? q.eq("status", "active") : q.neq("status", "archived");
     const { data } = await q;
     clientIds = (data ?? []).map((r) => r.client_id);
@@ -85,7 +90,7 @@ export function audienceCounts(recipients: Recipient[]) {
 /** Send many emails with Resend's batch API (100 per call); logs in dev. */
 type BatchEmail = EmailInput & { headers?: Record<string, string> };
 
-async function sendEmailBatch(emails: BatchEmail[]): Promise<{ sent: number; failed: number }> {
+async function sendEmailBatch(brand: Brand, emails: BatchEmail[]): Promise<{ sent: number; failed: number }> {
   const key = serverEnv.resendApiKey();
   let sent = 0;
   let failed = 0;
@@ -109,12 +114,12 @@ async function sendEmailBatch(emails: BatchEmail[]): Promise<{ sent: number; fai
     try {
       const { error } = await resend.batch.send(
         chunk.map((r) => ({
-          from: serverEnv.emailFrom(),
+          from: `${brand.name.replace(/["<>]/g, "")} <${serverEnv.emailFromAddress()}>`,
           to: r.input.to,
           subject: r.input.subject,
           html: r.html,
           text: r.text,
-          replyTo: r.input.replyTo,
+          replyTo: r.input.replyTo ?? brand.replyTo ?? undefined,
           headers: r.input.headers,
         })),
       );
@@ -130,18 +135,19 @@ async function sendEmailBatch(emails: BatchEmail[]): Promise<{ sent: number; fai
   return { sent, failed };
 }
 
-/** Deliver a broadcast on the chosen channels. Returns delivery counts. */
+/** Deliver a broadcast on the chosen channels (branded as the business). Returns delivery counts. */
 export async function deliverBroadcast(input: {
   broadcastId: string;
-  trainerId: string;
-  trainerName: string;
-  trainerEmail: string;
+  brand: Brand & { businessId: string };
+  senderName: string;
+  replyTo: string | null;
   subject: string;
   body: string;
   smsBody: string;
   channels: Channel[];
   recipients: Recipient[];
 }) {
+  const businessId = input.brand.businessId;
   const admin = createAdminClient();
   const clients = input.recipients.filter((r): r is ClientRecipient => r.kind === "client");
   let inApp = 0;
@@ -151,6 +157,7 @@ export async function deliverBroadcast(input: {
     for (let i = 0; i < clients.length; i += 500) {
       const rows = clients.slice(i, i + 500).map((c) => ({
         user_id: c.profileId,
+        business_id: businessId,
         type: "broadcast",
         title: input.subject,
         body: preview,
@@ -171,18 +178,19 @@ export async function deliverBroadcast(input: {
       if (!email || seen.has(email)) continue;
       seen.add(email);
       const e = broadcastEmail({
+        brand: input.brand,
         to: r.email,
         subject: input.subject,
         body: input.body,
-        trainerName: input.trainerName,
+        senderName: input.senderName,
         firstName: r.name,
         unsubscribeToken: r.kind === "lead" ? r.unsubscribeToken : null,
-        replyTo: input.trainerEmail,
+        replyTo: input.replyTo ?? undefined,
       });
-      const headers = r.kind === "lead" ? unsubscribeHeaders(r.unsubscribeToken) : undefined;
+      const headers = r.kind === "lead" ? unsubscribeHeaders(input.brand, r.unsubscribeToken) : undefined;
       batch.push({ ...e, headers });
     }
-    emails = await sendEmailBatch(batch);
+    emails = await sendEmailBatch(input.brand, batch);
   }
 
   let sms = 0;
@@ -191,7 +199,7 @@ export async function deliverBroadcast(input: {
     const targets = clients.filter((c) => c.smsOptIn && c.phone);
     for (let i = 0; i < targets.length; i += 5) {
       const results = await Promise.all(
-        targets.slice(i, i + 5).map((c) => sendSms({ to: c.phone, body: input.smsBody, kind: "other", profileId: c.profileId })),
+        targets.slice(i, i + 5).map((c) => sendSms({ brand: input.brand, to: c.phone, body: input.smsBody, kind: "other", profileId: c.profileId })),
       );
       sms += results.filter((r) => r.ok).length;
     }
@@ -201,7 +209,7 @@ export async function deliverBroadcast(input: {
     .from("broadcasts")
     .update({ sent_at: new Date().toISOString(), emails_sent: emails.sent, emails_failed: emails.failed, sms_sent: sms })
     .eq("id", input.broadcastId)
-    .eq("trainer_id", input.trainerId);
+    .eq("business_id", businessId);
 
   return { inApp, emailsSent: emails.sent, emailsFailed: emails.failed, sms };
 }

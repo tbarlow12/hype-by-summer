@@ -1,0 +1,87 @@
+/* The platform's own brand (its marketing site, signup, admin and the
+   platform-host auth pages). Scoped to .platform-site so trainer sites are
+   untouched. Unlayered on purpose: it must beat the trainer-site preset
+   rules in globals.css. */
+
+.platform-site {
+  --background: #f6f6f1;
+  --foreground: #0d0e14;
+  --p-surface: #ffffff;
+  --p-surface-2: #eeeee6;
+  --p-line: #e2e2d9;
+  --p-muted: #575a66;
+  --p-ink: #0d0e14;
+  --p-on-ink: #f6f6f1;
+  --p-accent: #c8f560;          /* volt highlight, used on ink only */
+  --p-accent-ink: #0d0e14;
+  --brand: #4537e6;             /* platform violet: buttons, links */
+  --brand-dark: #3426c9;
+  --on-brand: #ffffff;
+  --brand-text: #3d2fd6;
+  --font-sans: var(--font-p-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-p-display), var(--font-p-sans), ui-sans-serif, sans-serif;
+  --preset-sans: var(--font-sans);
+  --preset-display: var(--font-display);
+  --color-zinc-400: oklch(55.2% 0.016 285.938);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+@media (prefers-color-scheme: dark) {
+  .platform-site {
+    --background: #0b0c10;
+    --foreground: #f1f1ec;
+    --p-surface: #14151b;
+    --p-surface-2: #1b1c24;
+    --p-line: #262833;
+    --p-muted: #a3a6b4;
+    --p-ink: #f1f1ec;
+    --p-on-ink: #0b0c10;
+    --brand: #7b6dff;
+    --brand-dark: #6a5cf5;
+    --on-brand: #0b0c10;
+    --brand-text: #a49bff;
+    --color-zinc-400: oklch(70.5% 0.015 286.067);
+    --color-zinc-500: oklch(70.5% 0.015 286.067);
+  }
+}
+
+/* Sentence-case, tight geometric headings instead of the athletic preset. */
+.platform-site.platform-site :is(h1, h2, h3) {
+  font-family: var(--font-display);
+  text-transform: none;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
+}
+.platform-site.platform-site :is(.font-black, .font-extrabold) {
+  font-family: var(--font-display);
+}
+/* Shared buttons (components/ui.tsx) are uppercase on trainer sites. */
+.platform-site.platform-site .rounded-full.uppercase.tracking-wider {
+  text-transform: none;
+  letter-spacing: -0.01em;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+/* Helpers in the utilities layer with zero-specificity scope, so Tailwind
+   variants (hover:, dark:) on the same element still win. */
+@layer utilities {
+  :where(.platform-site) .p-surface { background: var(--p-surface); }
+  :where(.platform-site) .p-surface-2 { background: var(--p-surface-2); }
+  :where(.platform-site) .p-line { border-color: var(--p-line); }
+  :where(.platform-site) .p-muted { color: var(--p-muted); }
+  :where(.platform-site) .p-ink { background: var(--p-ink); color: var(--p-on-ink); }
+  :where(.platform-site) .p-accent { color: var(--p-accent); }
+  :where(.platform-site) .p-accent-bg { background: var(--p-accent); color: var(--p-accent-ink); }
+}
+
+/* Faint grid behind the hero. */
+:where(.platform-site) .p-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--foreground) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 6%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at 50% 0%, black 30%, transparent 75%);
+}

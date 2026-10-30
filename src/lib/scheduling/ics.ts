@@ -1,4 +1,4 @@
-// iCalendar (RFC 5545) generation for booking attachments and the trainer's
+// iCalendar (RFC 5545) generation for booking attachments and each coach's
 // subscription feed. Pure; all times are written in UTC.
 
 export type IcsEvent = {
@@ -75,7 +75,7 @@ export function buildIcs(calendar: IcsCalendar): string {
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    `PRODID:${calendar.prodId ?? "-//HYPE by Summer//Booking//EN"}`,
+    `PRODID:${calendar.prodId ?? "-//Booking//EN"}`,
     "CALSCALE:GREGORIAN",
     `METHOD:${calendar.method ?? "PUBLISH"}`,
   ];

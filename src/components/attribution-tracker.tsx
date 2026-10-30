@@ -11,7 +11,7 @@ import {
   touchFromVisit,
 } from "@/lib/leads/attribution-cookie";
 
-const PRIVATE = ["/coach", "/me", "/auth", "/api"];
+const PRIVATE = ["/coach", "/me", "/auth", "/api", "/admin"];
 
 // document.referrer only describes the full page load, not client-side navigations.
 let initialLoad = true;
@@ -26,7 +26,7 @@ function readCookie(name: string): string | undefined {
 
 /**
  * Stores first-touch marketing attribution (UTM params, referrer, landing page,
- * timestamp) in the first-party `hbs_attr` cookie for 90 days, never
+ * timestamp) in the first-party, host-only `site_attr` cookie (one per business site) for 90 days, never
  * overwriting it, and keeps the most recent campaign touch alongside.
  * Renders nothing. Mounted once in the root layout.
  */

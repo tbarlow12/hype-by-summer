@@ -48,12 +48,12 @@ describe("decideCancellation", () => {
     ).toMatchObject({ chargeFee: false });
   });
 
-  it("lets trainers choose to refund, never late", () => {
+  it("lets coaches choose to refund, never late", () => {
     const soon = "2026-10-27T14:00:00Z";
-    expect(decideCancellation({ booking: booking({ starts_at: soon }), policy, now, actor: "trainer", trainerRefund: true })).toMatchObject({
+    expect(decideCancellation({ booking: booking({ starts_at: soon }), policy, now, actor: "coach", coachRefund: true })).toMatchObject({
       late: false, status: "cancelled", refundPayment: true,
     });
-    expect(decideCancellation({ booking: booking({ starts_at: soon }), policy, now, actor: "trainer", trainerRefund: false })).toMatchObject({
+    expect(decideCancellation({ booking: booking({ starts_at: soon }), policy, now, actor: "coach", coachRefund: false })).toMatchObject({
       refundPayment: false, refundCredits: false,
     });
   });
@@ -66,17 +66,17 @@ describe("decideCancellation", () => {
 
   it("rejects inactive or past sessions", () => {
     expect(decideCancellation({ booking: booking({ status: "cancelled" }), policy, now, actor: "client" }).allowed).toBe(false);
-    expect(decideCancellation({ booking: booking({ starts_at: "2026-10-27T11:00:00Z" }), policy, now, actor: "trainer" }).allowed).toBe(false);
+    expect(decideCancellation({ booking: booking({ starts_at: "2026-10-27T11:00:00Z" }), policy, now, actor: "coach" }).allowed).toBe(false);
   });
 });
 
 describe("canReschedule", () => {
-  it("blocks clients inside the window but not trainers", () => {
+  it("blocks clients inside the window but not coaches", () => {
     const b = booking({ starts_at: "2026-10-28T06:00:00Z" });
     expect(canReschedule({ booking: b, policy, now, actor: "client" }).allowed).toBe(false);
-    expect(canReschedule({ booking: b, policy, now, actor: "trainer" }).allowed).toBe(true);
+    expect(canReschedule({ booking: b, policy, now, actor: "coach" }).allowed).toBe(true);
     expect(canReschedule({ booking: booking(), policy, now, actor: "client" }).allowed).toBe(true);
-    expect(canReschedule({ booking: booking({ status: "pending_payment" }), policy, now, actor: "trainer" }).allowed).toBe(false);
+    expect(canReschedule({ booking: booking({ status: "pending_payment" }), policy, now, actor: "coach" }).allowed).toBe(false);
   });
 });
 

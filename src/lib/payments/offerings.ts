@@ -2,7 +2,8 @@ import "server-only";
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { absoluteUrl } from "@/lib/env";
+import { businessUrl } from "@/lib/tenant";
+import { chargeAccount, isMissing, loadBusiness } from "@/lib/payments/shared";
 import type { Tables } from "@/lib/supabase/database.types";
 
 export type Offering = Tables<"offerings">;
@@ -18,44 +19,42 @@ function priceMatches(price: Stripe.Price, o: Offering): boolean {
   return price.recurring == null;
 }
 
-function productParams(o: Offering) {
-  const description = o.description?.trim() || undefined;
-  return {
-    name: o.name,
-    description,
-    active: o.active,
-    metadata: { offering_id: o.id, trainer_id: o.trainer_id, kind: o.kind },
-    url: absoluteUrl("/pricing"),
-  };
-}
-
 /**
- * Create/update the Stripe Product for an offering and make sure its Price
- * matches the offering. Prices are immutable: a changed amount or interval
- * creates a new Price and archives the old one. Deactivated offerings archive
- * both. Records sync status on the offering; returns the fresh row.
+ * Create/update the Stripe Product for an offering on the business's
+ * connected account and make sure its Price matches. Prices are immutable: a
+ * changed amount or interval creates a new Price and archives the old one.
+ * Deactivated offerings archive both. Records sync status; returns the row.
  */
 export async function syncOfferingToStripe(offeringId: string): Promise<Offering> {
   const admin = createAdminClient();
   const { data: o, error } = await admin.from("offerings").select("*").eq("id", offeringId).single();
   if (error || !o) throw new Error("Offering not found");
+  const business = await loadBusiness(admin, o.business_id);
 
   try {
+    const { opts } = chargeAccount(business);
     const s = stripe();
+    const productParams = {
+      name: o.name,
+      description: o.description?.trim() || undefined,
+      active: o.active,
+      metadata: { offering_id: o.id, business_id: o.business_id, kind: o.kind },
+      url: businessUrl(business, "/pricing"),
+    };
+
     // Product ----------------------------------------------------------------
     let productId = o.stripe_product_id ?? productIdFor(o.id);
     try {
-      await s.products.update(productId, productParams(o));
+      await s.products.update(productId, productParams, opts);
     } catch (err) {
-      if ((err as { code?: string }).code !== "resource_missing") throw err;
-      const created = await s.products.create(
-        { id: productIdFor(o.id), ...productParams(o) },
-        { idempotencyKey: `offering-product:${o.id}` },
-      ).catch(async (e: { code?: string }) => {
-        // Created on an earlier attempt whose DB write failed.
-        if (e.code === "resource_already_exists") return s.products.update(productIdFor(o.id), productParams(o));
-        throw e;
-      });
+      if (!isMissing(err)) throw err;
+      const created = await s.products
+        .create({ id: productIdFor(o.id), ...productParams }, { ...opts, idempotencyKey: `offering-product:${business.stripe_account_id}:${o.id}` })
+        .catch(async (e: { code?: string }) => {
+          // Created on an earlier attempt whose DB write failed.
+          if (e.code === "resource_already_exists") return s.products.update(productIdFor(o.id), productParams, opts);
+          throw e;
+        });
       productId = created.id;
     }
 
@@ -64,15 +63,15 @@ export async function syncOfferingToStripe(offeringId: string): Promise<Offering
     let current: Stripe.Price | null = null;
     if (priceId) {
       try {
-        current = await s.prices.retrieve(priceId);
+        current = await s.prices.retrieve(priceId, {}, opts);
       } catch (err) {
-        if ((err as { code?: string }).code !== "resource_missing") throw err;
+        if (!isMissing(err)) throw err;
       }
     }
 
     if (o.active) {
       if (current && current.product === productId && priceMatches(current, o)) {
-        if (!current.active) await s.prices.update(current.id, { active: true });
+        if (!current.active) await s.prices.update(current.id, { active: true }, opts);
       } else {
         const recurring =
           o.kind === "subscription" && o.billing_interval
@@ -87,16 +86,17 @@ export async function syncOfferingToStripe(offeringId: string): Promise<Offering
             metadata: { offering_id: o.id },
           },
           {
+            ...opts,
             idempotencyKey: `offering-price:${o.id}:${o.price_cents}:${o.currency}:${o.billing_interval ?? "once"}:${o.interval_count}:${current?.id ?? "none"}`,
           },
         );
-        await s.products.update(productId, { default_price: created.id });
-        if (current?.active) await s.prices.update(current.id, { active: false });
+        await s.products.update(productId, { default_price: created.id }, opts);
+        if (current?.active) await s.prices.update(current.id, { active: false }, opts);
         priceId = created.id;
       }
     } else if (current?.active) {
       // Existing subscribers keep their price; it just can't be bought anymore.
-      await s.prices.update(current.id, { active: false });
+      await s.prices.update(current.id, { active: false }, opts);
     }
 
     const { data: saved, error: saveErr } = await admin
@@ -127,4 +127,31 @@ export function isOfferingSynced(o: Pick<Offering, "stripe_synced_at" | "updated
   if (o.active && !o.stripe_price_id) return false;
   // updated_at bumps on every write, including the sync write itself.
   return new Date(o.stripe_synced_at).getTime() >= new Date(o.updated_at).getTime() - 5_000;
+}
+
+/**
+ * Forget Stripe ids from another account (a newly connected account starts
+ * empty). Offerings re-sync on save, on "Sync all", or lazily at checkout.
+ */
+export async function resetOfferingSync(businessId: string): Promise<void> {
+  await createAdminClient()
+    .from("offerings")
+    .update({ stripe_product_id: null, stripe_price_id: null, stripe_synced_at: null, stripe_sync_error: null })
+    .eq("business_id", businessId);
+}
+
+/** Sync every offering of a business (after connecting Stripe). Returns failures. */
+export async function syncAllOfferings(businessId: string): Promise<{ synced: number; failed: number }> {
+  const { data } = await createAdminClient().from("offerings").select("id").eq("business_id", businessId);
+  let synced = 0;
+  let failed = 0;
+  for (const { id } of data ?? []) {
+    try {
+      await syncOfferingToStripe(id);
+      synced++;
+    } catch {
+      failed++;
+    }
+  }
+  return { synced, failed };
 }

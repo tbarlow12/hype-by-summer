@@ -11,20 +11,24 @@ import { getActiveProgram, loadLogs, loadWorkouts } from "@/lib/training/server"
 export const metadata = { title: "My plan" };
 
 export default async function PlanPage({ searchParams }: PageProps<"/me/plan">) {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const sp = await searchParams;
   const supabase = await createClient();
   const today = todayInTz(profile.timezone);
-  const program = await getActiveProgram(supabase, profile.id);
+  const program = await getActiveProgram(supabase, business.id, profile.id);
 
-  const [workouts, programLogs, recentLogs, feedbackRes] = await Promise.all([
+  const [workouts, programLogs, recentLogs, feedbackRes, coachRes] = await Promise.all([
     program ? loadWorkouts(supabase, program.id) : Promise.resolve([]),
-    program ? loadLogs(supabase, { clientId: profile.id, programId: program.id, limit: 300 }) : Promise.resolve([]),
-    loadLogs(supabase, { clientId: profile.id, limit: 8 }),
+    program ? loadLogs(supabase, { businessId: business.id, clientId: profile.id, programId: program.id, limit: 300 }) : Promise.resolve([]),
+    loadLogs(supabase, { businessId: business.id, clientId: profile.id, limit: 8 }),
     program
-      ? supabase.from("program_feedback").select("week").eq("program_id", program.id)
+      ? supabase.from("program_feedback").select("week").eq("business_id", business.id).eq("program_id", program.id)
       : Promise.resolve({ data: [] as { week: number | null }[] }),
+    program?.coach_id
+      ? supabase.from("profiles").select("full_name").eq("id", program.coach_id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
+  const coachName = coachRes.data?.full_name?.trim() || null;
 
   const loggedLabel = sp.logged ? (
     <div className="mb-4">
@@ -90,6 +94,7 @@ export default async function PlanPage({ searchParams }: PageProps<"/me/plan">) 
             {position ? `Week ${position.week} of ${program.duration_weeks} · Day ${position.day}` : started ? "Program finished" : `Starts ${longDateLabel(start)}`}
           </p>
           <h2 className="mt-1 text-xl font-bold tracking-tight">{program.name}</h2>
+          {coachName ? <p className="text-xs text-zinc-500">Coached by {coachName}</p> : null}
           {program.description ? <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{program.description}</p> : null}
           <div className="mt-4">
             {todays.length ? (

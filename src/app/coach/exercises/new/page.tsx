@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createExercise } from "../actions";
 import { ExerciseForm } from "../exercise-form";
 
 export const metadata = { title: "New exercise" };
 
 export default async function NewExercisePage() {
-  await requireTrainer();
+  await requireStaff();
   return (
     <div className="max-w-3xl">
       <Link href="/coach/exercises" className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">

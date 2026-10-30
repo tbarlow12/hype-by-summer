@@ -1,17 +1,17 @@
 import Link from "next/link";
 import { Badge, Card, EmptyState, Input, LinkButton, PageHeader, Select, buttonClass } from "@/components/ui";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { titleCase } from "@/lib/format";
 import { EQUIPMENT, EXERCISE_CATEGORIES, MUSCLES } from "@/lib/training/constants";
-import { EXERCISE_FIELDS } from "@/lib/training/server";
+import { EXERCISE_FIELDS, exerciseLibraryFilter } from "@/lib/training/server";
 
 export const metadata = { title: "Exercise library" };
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.trim() || "";
 
 export default async function ExercisesPage({ searchParams }: PageProps<"/coach/exercises">) {
-  const profile = await requireTrainer();
+  const { business } = await requireStaff();
   const sp = await searchParams;
   const q = one(sp.q).slice(0, 80);
   const category = one(sp.category);
@@ -25,9 +25,9 @@ export default async function ExercisesPage({ searchParams }: PageProps<"/coach/
   if ((EXERCISE_CATEGORIES as readonly string[]).includes(category)) query = query.eq("category", category);
   if (muscle) query = query.contains("primary_muscles", [muscle]);
   if (equipment) query = query.contains("equipment", [equipment]);
-  if (source === "mine") query = query.eq("trainer_id", profile.id);
-  else if (source === "global") query = query.is("trainer_id", null);
-  else query = query.or(`trainer_id.is.null,trainer_id.eq.${profile.id}`);
+  if (source === "mine") query = query.eq("business_id", business.id);
+  else if (source === "global") query = query.is("business_id", null);
+  else query = query.or(exerciseLibraryFilter(business.id));
   const { data: exercises } = await query;
   const filtered = !!(q || category || muscle || equipment || source !== "all");
 
@@ -35,7 +35,7 @@ export default async function ExercisesPage({ searchParams }: PageProps<"/coach/
     <div>
       <PageHeader
         title="Exercise library"
-        description="The shared library plus your own exercises. Duplicate any global exercise to add your own cues and demo video."
+        description="The global library plus your team's own exercises. Duplicate any global exercise to add your own cues and demo video."
         actions={<LinkButton href="/coach/exercises/new">New exercise</LinkButton>}
       />
 
@@ -66,7 +66,7 @@ export default async function ExercisesPage({ searchParams }: PageProps<"/coach/
         <label className="sr-only" htmlFor="source">Source</label>
         <Select id="source" name="source" defaultValue={source}>
           <option value="all">All exercises</option>
-          <option value="mine">My exercises</option>
+          <option value="mine">Our exercises</option>
           <option value="global">Global library</option>
         </Select>
         <div className="flex gap-2">
@@ -95,7 +95,7 @@ export default async function ExercisesPage({ searchParams }: PageProps<"/coach/
                       <p className="font-semibold">{ex.name}</p>
                       <div className="flex shrink-0 gap-1">
                         {ex.demo_video_url ? <Badge tone="blue">Video</Badge> : null}
-                        {ex.trainer_id ? <Badge tone="brand">Mine</Badge> : null}
+                        {ex.business_id ? <Badge tone="brand">Custom</Badge> : null}
                       </div>
                     </div>
                     <p className="mt-1 text-xs text-zinc-500">

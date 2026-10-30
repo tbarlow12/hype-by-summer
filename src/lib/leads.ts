@@ -3,16 +3,27 @@ import { headers } from "next/headers";
 import type { Tables, Enums, Json } from "@/lib/supabase/database.types";
 import { readAttribution, type Attribution } from "@/lib/attribution";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { absoluteUrl, BRAND_NAME } from "@/lib/env";
 import { sendEmail } from "@/lib/email";
+import { notify } from "@/lib/notify";
+import type { Brand } from "@/lib/tenant";
 import { clientInfoFromHeaders, type ClientInfo } from "@/lib/leads/headers";
 import { scoreLead } from "@/lib/leads/score";
 import { expiresInDays, signDownloadToken, verifyDownloadToken, type VerifyResult } from "@/lib/leads/tokens";
 
-// OWNER: leads. Contract used by scheduling (consult bookings), homepage forms.
+// OWNER: leads. Contract used by scheduling (consult bookings), the public
+// site's forms and the CRM. Every function is scoped to one business: callers
+// pass the business they've authorized (requireBusiness / requireStaff / the
+// booking's business), never an id from the client.
+//
+// Assignment: captureLead assigns new leads to `assignedCoachId` when given
+// (and an active member), else round-robin across the business's bookable
+// coaches (owner fallback). Repeat submissions keep the current coach. See
+// supabase/migrations/20261102005_lead_assignment.sql.
 
 export type CaptureLeadInput = {
-  trainerId: string;
+  businessId: string;
+  /** Preferred owner, e.g. the coach a consult was booked with. Ignored unless an active member. */
+  assignedCoachId?: string;
   email: string;
   firstName?: string;
   lastName?: string;
@@ -31,12 +42,12 @@ export type CaptureLeadInput = {
   howHeard?: string;
   marketingConsent?: boolean;
   consentText?: string;
-  /** Defaults to the visitor's `hbs_attr` cookie when omitted. */
+  /** Defaults to the visitor's attribution cookie when omitted. */
   attribution?: Attribution;
   ipAddress?: string;
   userAgent?: string;
   country?: string;
-  /** Don't read ip/user-agent/country from the current request (e.g. a trainer adding a lead). */
+  /** Don't read ip/user-agent/country from the current request (e.g. staff adding a lead). */
   skipRequestInfo?: boolean;
 };
 
@@ -86,7 +97,8 @@ export async function captureLead(input: CaptureLeadInput): Promise<Tables<"lead
     : undefined;
 
   const payload: Record<string, Json | undefined> = {
-    trainer_id: input.trainerId,
+    business_id: input.businessId,
+    assigned_coach_id: input.assignedCoachId,
     email,
     first_name: clean(input.firstName, 100),
     last_name: clean(input.lastName, 100),
@@ -153,13 +165,22 @@ export async function refreshLeadScore(leadId: string): Promise<Lead | null> {
 
 const SCORE_EVENTS = new Set<Enums<"lead_event_type">>(["magnet_downloaded", "consult_booked", "contact_message", "captured"]);
 
-export async function recordLeadEvent(
-  leadId: string,
-  type: Enums<"lead_event_type">,
-  detail?: Record<string, unknown>,
-  createdBy?: string,
-): Promise<void> {
+export type LeadEventInput = {
+  /** The business the caller is acting for; the lead must belong to it. */
+  businessId: string;
+  leadId: string;
+  type: Enums<"lead_event_type">;
+  detail?: Record<string, unknown>;
+  /** Staff member who did it (null = system / the lead). */
+  createdBy?: string | null;
+};
+
+/** Logs an event on a lead of `businessId` (throws `lead_not_found` otherwise) and keeps status/score in sync. */
+export async function recordLeadEvent(input: LeadEventInput): Promise<void> {
+  const { businessId, leadId, type, detail, createdBy } = input;
   const admin = createAdminClient();
+  const { data: lead } = await admin.from("leads").select("id").eq("id", leadId).eq("business_id", businessId).maybeSingle();
+  if (!lead) throw new Error("lead_not_found");
   const { error } = await admin
     .from("lead_events")
     .insert({ lead_id: leadId, type, detail: (detail ?? {}) as Json, created_by: createdBy ?? null });
@@ -180,6 +201,31 @@ export async function recordLeadEvent(
   if (SCORE_EVENTS.has(type)) await refreshLeadScore(leadId);
 }
 
+/**
+ * In-app notification (optionally emailed) about a lead: goes to the assigned
+ * coach, or to the business's owners/admins while the lead is unassigned.
+ */
+export async function notifyLeadOwner(
+  lead: Pick<Lead, "id" | "business_id" | "assigned_coach_id">,
+  n: { type: string; title: string; body?: string; email?: boolean },
+): Promise<void> {
+  let recipients = lead.assigned_coach_id ? [lead.assigned_coach_id] : [];
+  if (!recipients.length) {
+    const { data } = await createAdminClient()
+      .from("business_members")
+      .select("user_id")
+      .eq("business_id", lead.business_id)
+      .eq("active", true)
+      .in("role", ["owner", "admin"]);
+    recipients = (data ?? []).map((m) => m.user_id);
+  }
+  await Promise.all(
+    recipients.map((userId) =>
+      notify({ userId, businessId: lead.business_id, type: n.type, title: n.title, body: n.body, link: `/coach/leads/${lead.id}`, email: n.email }),
+    ),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Lead magnet delivery
 // ---------------------------------------------------------------------------
@@ -193,32 +239,42 @@ function tokenSecret(): string {
 /** Download links stay valid for 30 days (each click mints a 5-minute storage URL). */
 export const DOWNLOAD_LINK_DAYS = 30;
 
-export function createDownloadToken(leadId: string, magnetId: string): string {
-  return signDownloadToken({ leadId, magnetId, exp: expiresInDays(DOWNLOAD_LINK_DAYS) }, tokenSecret());
+export function createDownloadToken(claims: { businessId: string; leadId: string; magnetId: string }): string {
+  return signDownloadToken({ ...claims, exp: expiresInDays(DOWNLOAD_LINK_DAYS) }, tokenSecret());
 }
 
 export function verifyDownloadTokenValue(token: string | null | undefined): VerifyResult {
   return verifyDownloadToken(token, tokenSecret());
 }
 
-export const downloadUrl = (token: string) => absoluteUrl(`/api/lead-magnets/download?token=${encodeURIComponent(token)}`);
-export const unsubscribeUrl = (lead: Pick<Lead, "unsubscribe_token">) => absoluteUrl(`/unsubscribe/${lead.unsubscribe_token}`);
+/** Absolute URL on the business's own site (brand.siteUrl). */
+export const brandUrl = (brand: Pick<Brand, "siteUrl">, path: string) =>
+  `${brand.siteUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 
-/** Standard footer for any marketing/lead email. */
-export function leadEmailFooter(lead: Pick<Lead, "unsubscribe_token">): string {
-  return `Don't want these emails? Unsubscribe: ${unsubscribeUrl(lead)}`;
+/** Site-relative download link (works on the issuing business's host only). */
+export const downloadPath = (token: string) => `/api/lead-magnets/download?token=${encodeURIComponent(token)}`;
+export const downloadUrl = (brand: Pick<Brand, "siteUrl">, token: string) => brandUrl(brand, downloadPath(token));
+export const unsubscribeUrl = (brand: Pick<Brand, "siteUrl">, lead: Pick<Lead, "unsubscribe_token">) =>
+  brandUrl(brand, `/unsubscribe/${lead.unsubscribe_token}`);
+
+/** Standard footer for any marketing/lead email from the business. */
+export function leadEmailFooter(brand: Pick<Brand, "siteUrl">, lead: Pick<Lead, "unsubscribe_token">): string {
+  return `Don't want these emails? Unsubscribe: ${unsubscribeUrl(brand, lead)}`;
 }
 
 /**
- * Emails the guide's download link to the lead and logs `magnet_delivered`.
- * Returns the signed token (used for the instant download on the thank-you page).
+ * Emails the guide's download link to the lead from the business (`brand`)
+ * and logs `magnet_delivered`. Returns the signed token (used for the instant
+ * download on the thank-you page).
  */
 export async function deliverLeadMagnet(
-  lead: Pick<Lead, "id" | "email" | "first_name" | "unsubscribe_token">,
-  magnet: Pick<Tables<"lead_magnets">, "id" | "title" | "slug" | "thank_you_message">,
-  opts: { bookUrl?: string; replyTo?: string } = {},
+  brand: Brand,
+  lead: Pick<Lead, "id" | "business_id" | "email" | "first_name" | "unsubscribe_token">,
+  magnet: Pick<Tables<"lead_magnets">, "id" | "business_id" | "title" | "slug" | "thank_you_message">,
+  opts: { bookUrl?: string } = {},
 ): Promise<{ token: string; emailed: boolean }> {
-  const token = createDownloadToken(lead.id, magnet.id);
+  if (lead.business_id !== magnet.business_id || brand.businessId !== magnet.business_id) throw new Error("business_mismatch");
+  const token = createDownloadToken({ businessId: magnet.business_id, leadId: lead.id, magnetId: magnet.id });
   const hi = lead.first_name ? `Hi ${lead.first_name},` : "Hi there,";
   const paragraphs = [
     hi,
@@ -228,21 +284,22 @@ export async function deliverLeadMagnet(
   if (opts.bookUrl) {
     paragraphs.push(`Want a plan built around you? Book a free consult and we'll map out your first month together: ${opts.bookUrl}`);
   }
-  paragraphs.push(`Just reply to this email if you have any questions.\n\n${BRAND_NAME}`);
+  paragraphs.push(`Just reply to this email if you have any questions.\n\n${brand.name}`);
 
   const result = await sendEmail({
+    brand,
     to: lead.email,
     subject: `Your free guide: ${magnet.title}`,
     heading: magnet.title,
     paragraphs,
-    cta: { label: "Download your guide", url: downloadUrl(token) },
-    footerNote: `You're receiving this because you requested this guide. ${leadEmailFooter(lead)}`,
-    replyTo: opts.replyTo,
+    cta: { label: "Download your guide", url: downloadUrl(brand, token) },
+    footerNote: `You're receiving this because you requested this guide from ${brand.name}. ${leadEmailFooter(brand, lead)}`,
   });
-  await recordLeadEvent(lead.id, "magnet_delivered", {
-    lead_magnet_id: magnet.id,
-    slug: magnet.slug,
-    emailed: result.ok,
+  await recordLeadEvent({
+    businessId: magnet.business_id,
+    leadId: lead.id,
+    type: "magnet_delivered",
+    detail: { lead_magnet_id: magnet.id, slug: magnet.slug, emailed: result.ok },
   });
   return { token, emailed: result.ok };
 }

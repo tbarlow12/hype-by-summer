@@ -6,6 +6,9 @@ export const SORTS = ["newest", "oldest", "score", "follow_up", "name"] as const
 export type LeadSort = (typeof SORTS)[number];
 export const DUE_FILTERS = ["overdue", "today", "week", "none"] as const;
 export type DueFilter = (typeof DUE_FILTERS)[number];
+/** Whose leads: the viewer's ("mine"), everyone's, or nobody's yet. */
+export const OWNER_FILTERS = ["mine", "all", "unassigned"] as const;
+export type OwnerFilter = (typeof OWNER_FILTERS)[number];
 
 export type LeadFilters = {
   status?: LeadStatus;
@@ -14,6 +17,8 @@ export type LeadFilters = {
   campaign?: string;
   due?: DueFilter;
   q?: string;
+  /** Unset = the viewer's default (coaches: mine, managers: all). */
+  owner?: OwnerFilter;
   sort: LeadSort;
 };
 
@@ -41,6 +46,7 @@ export function parseLeadFilters(params: Params): LeadFilters {
     campaign: get(params, "campaign")?.slice(0, 100),
     due: oneOf(DUE_FILTERS, get(params, "due")),
     q,
+    owner: oneOf(OWNER_FILTERS, get(params, "owner")),
     sort: oneOf(SORTS, get(params, "sort")) ?? "newest",
   };
 }
@@ -71,6 +77,9 @@ export function dueWindow(due: DueFilter, now: Date, endOfToday?: Date): { befor
       return { none: true };
   }
 }
+
+/** Effective owner scope: coaches default to their own leads, managers to everyone's. */
+export const ownerScope = (f: Pick<LeadFilters, "owner">, manager: boolean): OwnerFilter => f.owner ?? (manager ? "all" : "mine");
 
 export const hasActiveFilters = (f: LeadFilters) =>
   Boolean(f.status || f.source || f.magnet || f.campaign || f.due || f.q);

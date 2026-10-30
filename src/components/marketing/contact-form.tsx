@@ -4,11 +4,10 @@ import { useId } from "react";
 import { ActionForm, SubmitButton } from "@/components/form";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui";
 import { submitContactForm } from "@/app/(marketing)/actions";
-import { BRAND_NAME } from "@/lib/env";
 import { consentText, FORMATS, GOALS, TIMELINES } from "@/lib/leads/options";
 
 /** Homepage contact form: creates a lead (source contact_form) with the message. */
-export function ContactForm() {
+export function ContactForm({ brandName }: { brandName: string }) {
   const id = useId();
   const f = (name: string) => `${id}-${name}`;
   return (
@@ -68,7 +67,7 @@ export function ContactForm() {
           placeholder="Tell me a little about where you're at and what you'd like help with."
         />
       </Field>
-      <Checkbox name="marketing_consent" label={consentText(BRAND_NAME)} />
+      <Checkbox name="marketing_consent" label={consentText(brandName)} />
       <SubmitButton size="lg" pendingLabel="Sending…" className="w-full sm:w-auto sm:self-start">
         Send message
       </SubmitButton>

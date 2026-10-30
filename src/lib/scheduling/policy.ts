@@ -54,14 +54,14 @@ function money(cents: number): string {
  * Decide what cancelling means. Clients inside the window get a late cancel
  * (no refund, credits forfeited, fee for sessions not already paid for).
  * Outside the window credits always come back and card payments are refunded
- * when the trainer's policy allows. Trainers choose whether to refund.
+ * when the business policy allows. Staff choose whether to refund.
  */
 export function decideCancellation(input: {
   booking: PolicyBooking;
   policy: CancellationPolicy;
   now: Date;
-  actor: "client" | "trainer";
-  trainerRefund?: boolean;
+  actor: "client" | "coach";
+  coachRefund?: boolean;
 }): CancelDecision {
   const { booking, policy, now, actor } = input;
   if (!ACTIVE_STATUSES.includes(booking.status)) {
@@ -77,8 +77,8 @@ export function decideCancellation(input: {
       chargeFee: false, feeCents: 0, summary: "Your unpaid reservation will be released.",
     };
   }
-  if (actor === "trainer") {
-    const refund = input.trainerRefund ?? true;
+  if (actor === "coach") {
+    const refund = input.coachRefund ?? true;
     return {
       allowed: true,
       late: false,
@@ -96,7 +96,7 @@ export function decideCancellation(input: {
     const parts = ["You're cancelling outside the cancellation window."];
     if (usedCredits) parts.push("Your session credit will be returned.");
     if (booking.payment_method === "stripe") {
-      parts.push(refundPayment ? "Your payment will be refunded in full." : "Payments are non-refundable under this coach's policy.");
+      parts.push(refundPayment ? "Your payment will be refunded in full." : "Payments are non-refundable under this cancellation policy.");
     }
     return { allowed: true, late: false, status: "cancelled", refundPayment, refundCredits: usedCredits, chargeFee: false, feeCents: 0, summary: parts.join(" ") };
   }
@@ -112,12 +112,12 @@ export function decideCancellation(input: {
   };
 }
 
-/** Clients may reschedule confirmed sessions outside the cancellation window; trainers any time before start. */
+/** Clients may reschedule confirmed sessions outside the cancellation window; staff any time before start. */
 export function canReschedule(input: {
   booking: Pick<PolicyBooking, "status" | "starts_at">;
   policy: Pick<CancellationPolicy, "cancellation_window_hours">;
   now: Date;
-  actor: "client" | "trainer";
+  actor: "client" | "coach";
 }): { allowed: true } | { allowed: false; reason: string } {
   const { booking, policy, now, actor } = input;
   if (booking.status !== "confirmed") return { allowed: false, reason: "Only confirmed sessions can be rescheduled." };
@@ -159,6 +159,7 @@ const RPC_ERRORS: Record<string, string> = {
   not_reschedulable: "Only confirmed sessions can be rescheduled.",
   same_time: "Pick a different time to reschedule to.",
   booking_not_found: "We couldn't find that booking.",
+  coach_not_available: "That coach isn't available for this session. Pick another coach.",
 };
 
 /** Maps a Postgres error message from the booking RPCs to a friendly sentence. */

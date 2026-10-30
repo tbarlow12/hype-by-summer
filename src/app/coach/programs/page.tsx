@@ -1,27 +1,41 @@
 import Link from "next/link";
 import { Badge, Card, CardTitle, EmptyState, LinkButton, PageHeader } from "@/components/ui";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { displayName } from "@/lib/format";
 import { longDateLabel, programPosition, todayInTz } from "@/lib/training/dates";
+import { loadStaff } from "@/lib/training/server";
 
 export const metadata = { title: "Programs" };
 
 const STATUS_TONE = { draft: "neutral", active: "green", completed: "blue", archived: "neutral" } as const;
 
 export default async function ProgramsPage({ searchParams }: PageProps<"/coach/programs">) {
-  const profile = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const sp = await searchParams;
   const showArchived = sp.archived === "1";
+  const mineOnly = sp.mine === "1";
   const supabase = await createClient();
 
   let query = supabase
     .from("programs")
-    .select("id, name, goal, duration_weeks, status, start_date, client_id, template_id, updated_at, program_workouts(count), client:profiles!programs_client_id_fkey(full_name, email)")
-    .eq("trainer_id", profile.id)
+    .select("id, name, goal, duration_weeks, status, start_date, client_id, coach_id, template_id, updated_at, program_workouts(count), client:profiles!programs_client_id_fkey(full_name, email)")
+    .eq("business_id", business.id)
     .order("updated_at", { ascending: false });
   if (!showArchived) query = query.neq("status", "archived");
-  const { data: programs } = await query;
+  if (mineOnly) query = query.eq("coach_id", profile.id);
+  const [{ data: programs }, staff] = await Promise.all([query, loadStaff(business.id)]);
+  const coachName = (id: string | null) => {
+    const m = id ? staff.find((s) => s.user_id === id) : null;
+    return m ? displayName(m) : null;
+  };
+  const href = (patch: Record<string, string | null>) => {
+    const q = new URLSearchParams();
+    const next = { archived: showArchived ? "1" : null, mine: mineOnly ? "1" : null, ...patch };
+    for (const [k, v] of Object.entries(next)) if (v) q.set(k, v);
+    const qs = q.toString();
+    return qs ? `/coach/programs?${qs}` : "/coach/programs";
+  };
   const templates = (programs ?? []).filter((p) => !p.client_id);
   const assigned = (programs ?? []).filter((p) => p.client_id);
 
@@ -31,6 +45,7 @@ export default async function ProgramsPage({ searchParams }: PageProps<"/coach/p
     ? await supabase
         .from("workout_logs")
         .select("client_id, performed_on, pain_flag")
+        .eq("business_id", business.id)
         .in("client_id", clientIds)
         .order("performed_on", { ascending: false })
         .limit(200)
@@ -46,7 +61,10 @@ export default async function ProgramsPage({ searchParams }: PageProps<"/coach/p
         description="Build reusable templates, then assign them to clients with a start date."
         actions={
           <>
-            <LinkButton href={showArchived ? "/coach/programs" : "/coach/programs?archived=1"} variant="ghost">
+            <LinkButton href={href({ mine: mineOnly ? null : "1" })} variant="ghost">
+              {mineOnly ? "Everyone's programs" : "Only mine"}
+            </LinkButton>
+            <LinkButton href={href({ archived: showArchived ? null : "1" })} variant="ghost">
               {showArchived ? "Hide archived" : "Show archived"}
             </LinkButton>
             <LinkButton href="/coach/programs/new">New program</LinkButton>
@@ -75,6 +93,7 @@ export default async function ProgramsPage({ searchParams }: PageProps<"/coach/p
                     {p.goal ? <p className="mt-1 text-sm text-zinc-500">{p.goal}</p> : null}
                     <p className="mt-3 text-xs text-zinc-500">
                       {p.duration_weeks} week{p.duration_weeks === 1 ? "" : "s"} · {p.program_workouts?.[0]?.count ?? 0} workouts
+                      {coachName(p.coach_id) ? ` · by ${coachName(p.coach_id)}` : ""}
                     </p>
                   </Card>
                 </Link>
@@ -102,6 +121,7 @@ export default async function ProgramsPage({ searchParams }: PageProps<"/coach/p
                         <p className="truncate text-sm text-zinc-500">
                           {p.name}
                           {p.start_date ? ` · starts ${longDateLabel(p.start_date)}` : ""}
+                          {coachName(p.coach_id) ? ` · coach ${coachName(p.coach_id)}` : ""}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">

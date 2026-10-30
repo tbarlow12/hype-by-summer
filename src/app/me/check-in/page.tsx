@@ -1,8 +1,8 @@
 import { ActionForm, SubmitButton } from "@/components/form";
-import { Alert, Card, EmptyState, Field, Input, PageHeader, Textarea } from "@/components/ui";
+import { Alert, Card, Field, Input, PageHeader, Textarea } from "@/components/ui";
 import { Sparkline } from "@/components/charts";
 import { CheckInCard } from "@/components/training/check-in-card";
-import { getClientTrainerId, requireClient } from "@/lib/auth";
+import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { RATING_HINTS } from "@/lib/training/constants";
 import { addDays, longDateLabel, todayInTz, weekStartMonday } from "@/lib/training/dates";
@@ -20,26 +20,22 @@ const RATINGS: { name: keyof typeof RATING_HINTS; label: string }[] = [
 ];
 
 export default async function CheckInPage() {
-  const profile = await requireClient();
-  const trainerId = await getClientTrainerId(profile.id);
+  const { profile, business } = await requireClient();
   const supabase = await createClient();
   const today = todayInTz(profile.timezone);
   const weekOf = weekStartMonday(today);
 
-  if (!trainerId) {
-    return (
-      <div>
-        <PageHeader title="Weekly check-in" />
-        <EmptyState title="No coach yet" description="Once you're connected with a coach you can check in each week here." />
-      </div>
-    );
-  }
-
   const [{ data: history }, unit] = await Promise.all([
-    supabase.from("check_ins").select("*").eq("client_id", profile.id).order("week_of", { ascending: false }).limit(26),
-    preferredUnit(supabase, profile.id),
+    supabase
+      .from("check_ins")
+      .select("*, responder:profiles!check_ins_responded_by_fkey(full_name)")
+      .eq("business_id", business.id)
+      .eq("client_id", profile.id)
+      .order("week_of", { ascending: false })
+      .limit(26),
+    preferredUnit(supabase, business.id, profile.id),
   ]);
-  const current = (history ?? []).find((c) => c.week_of === weekOf && c.trainer_id === trainerId);
+  const current = (history ?? []).find((c) => c.week_of === weekOf);
   const past = (history ?? []).filter((c) => c !== current);
   const weights = [...(history ?? [])].reverse().filter((c) => c.body_weight != null).map((c) => Number(c.body_weight));
 
@@ -52,11 +48,11 @@ export default async function CheckInPage() {
       {current ? (
         <div className="mb-4">
           <Alert tone="green">
-            You&apos;ve checked in this week{current.trainer_response ? " and your coach replied below" : ""}. You can still update it.
+            You&apos;ve checked in this week{current.coach_response ? ` and ${current.responder?.full_name?.trim() || "your coach"} replied below` : ""}. You can still update it.
           </Alert>
         </div>
       ) : null}
-      {current?.trainer_response ? (
+      {current?.coach_response ? (
         <div className="mb-4">
           <CheckInCard checkIn={current} weightUnit={unit} />
         </div>

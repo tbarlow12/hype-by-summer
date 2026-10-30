@@ -3,12 +3,17 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
 import { EXERCISE_CATEGORIES } from "@/lib/training/constants";
 import { parseVideoUrl } from "@/lib/training/video";
 import { EXERCISE_FIELDS } from "@/lib/training/server";
+import { exerciseUsableBy } from "@/lib/training/routing";
+
+// The library = global exercises (business_id null, read-only) + this
+// business's own, which any staff member can add, edit or delete.
+const uuid = z.uuid();
 
 const tag = z.string().trim().toLowerCase().max(40).transform((v) => v.replace(/\s+/g, "_"));
 
@@ -50,13 +55,13 @@ function toRow(d: z.infer<typeof schema>) {
 }
 
 export async function createExercise(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const parsed = parseForm(schema, formData);
   if (parsed.error) return parsed.error;
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("exercises")
-    .insert({ ...toRow(parsed.data), trainer_id: profile.id })
+    .insert({ ...toRow(parsed.data), business_id: business.id, created_by: profile.id })
     .select("id")
     .single();
   if (error) return fail(error.message);
@@ -65,7 +70,8 @@ export async function createExercise(_: ActionState, formData: FormData): Promis
 }
 
 export async function updateExercise(id: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireTrainer();
+  const { business } = await requireStaff();
+  if (!uuid.safeParse(id).success) return fail("Exercise not found.");
   const parsed = parseForm(schema, formData);
   if (parsed.error) return parsed.error;
   const supabase = await createClient();
@@ -73,10 +79,10 @@ export async function updateExercise(id: string, _: ActionState, formData: FormD
     .from("exercises")
     .update(toRow(parsed.data))
     .eq("id", id)
-    .eq("trainer_id", profile.id)
+    .eq("business_id", business.id)
     .select("id");
   if (error) return fail(error.message);
-  if (!data?.length) return fail("You can only edit your own exercises.");
+  if (!data?.length) return fail("Only your business's own exercises can be edited.");
   revalidatePath("/coach/exercises");
   revalidatePath(`/coach/exercises/${id}`);
   return ok("Exercise saved.");
@@ -84,34 +90,41 @@ export async function updateExercise(id: string, _: ActionState, formData: FormD
 
 export async function deleteExercise(id: string, _: ActionState): Promise<ActionState> {
   void _;
-  const profile = await requireTrainer();
+  const { business } = await requireStaff();
+  if (!uuid.safeParse(id).success) return fail("Exercise not found.");
   const supabase = await createClient();
   const { error, count } = await supabase
     .from("exercises")
     .delete({ count: "exact" })
     .eq("id", id)
-    .eq("trainer_id", profile.id);
+    .eq("business_id", business.id);
   if (error) {
     return fail(error.code === "23503" ? "This exercise is used in programs or logs. Remove it from those first." : error.message);
   }
-  if (!count) return fail("You can only delete your own exercises.");
+  if (!count) return fail("Only your business's own exercises can be deleted.");
   revalidatePath("/coach/exercises");
   redirect("/coach/exercises");
 }
 
-/** Copy a global (or own) exercise into the trainer's library to customize. */
+/** Copy a global (or own) exercise into the business's library to customize. */
 export async function duplicateExercise(id: string, _: ActionState): Promise<ActionState> {
   void _;
-  const profile = await requireTrainer();
+  const { profile, business } = await requireStaff();
+  if (!uuid.safeParse(id).success) return fail("Exercise not found.");
   const supabase = await createClient();
   const { data: src } = await supabase.from("exercises").select(EXERCISE_FIELDS).eq("id", id).maybeSingle();
-  if (!src || (src.trainer_id && src.trainer_id !== profile.id)) return fail("Exercise not found.");
-  const { id: _id, trainer_id: _t, ...rest } = src;
+  if (!src || !exerciseUsableBy(src, business.id)) return fail("Exercise not found.");
+  const { id: _id, business_id: _b, ...rest } = src;
   void _id;
-  void _t;
+  void _b;
   const { data, error } = await supabase
     .from("exercises")
-    .insert({ ...rest, name: src.trainer_id ? `${src.name} (copy)` : src.name, trainer_id: profile.id })
+    .insert({
+      ...rest,
+      name: src.business_id ? `${src.name} (copy)` : src.name,
+      business_id: business.id,
+      created_by: profile.id,
+    })
     .select("id")
     .single();
   if (error) return fail(error.message);

@@ -593,7 +593,7 @@ function ExercisePicker({ library, disabled, onPick }: { library: ExerciseLite[]
             <li key={e.id} className="flex items-center justify-between gap-2 px-3 py-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">
-                  {e.name} {e.trainer_id ? <Badge tone="brand" className="ml-1">Mine</Badge> : null}
+                  {e.name} {e.business_id ? <Badge tone="brand" className="ml-1">Custom</Badge> : null}
                 </p>
                 <p className="truncate text-xs text-zinc-500">{[e.category && titleCase(e.category), ...e.primary_muscles.map(titleCase)].filter(Boolean).join(" · ")}</p>
               </div>

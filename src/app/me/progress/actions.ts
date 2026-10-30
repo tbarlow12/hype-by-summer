@@ -2,12 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getClientTrainerId, requireClient } from "@/lib/auth";
+import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { notify } from "@/lib/notify";
 import { displayName } from "@/lib/format";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
 import { addDays, todayInTz } from "@/lib/training/dates";
+import { getActiveProgram, notifyResponsibleCoach } from "@/lib/training/server";
+
+// Every row is the client's own at the business whose site this is
+// (requireClient); rows carry that business_id.
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -39,7 +42,7 @@ const metricSchema = z.object({
 });
 
 export async function addBodyMetric(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const parsed = parseForm(metricSchema, formData);
   if (parsed.error) return parsed.error;
   const d = parsed.data;
@@ -48,6 +51,7 @@ export async function addBodyMetric(_: ActionState, formData: FormData): Promise
   if (values.every((v) => v == null)) return fail("Enter at least one measurement.");
   const supabase = await createClient();
   const { error } = await supabase.from("body_metrics").insert({
+    business_id: business.id,
     client_id: profile.id,
     ...d,
     resting_hr: d.resting_hr == null ? null : Math.round(d.resting_hr),
@@ -60,10 +64,15 @@ export async function addBodyMetric(_: ActionState, formData: FormData): Promise
 
 export async function deleteBodyMetric(id: string, _: ActionState): Promise<ActionState> {
   void _;
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   if (!uuid.safeParse(id).success) return fail("Not found.");
   const supabase = await createClient();
-  const { error } = await supabase.from("body_metrics").delete().eq("id", id).eq("client_id", profile.id);
+  const { error } = await supabase
+    .from("body_metrics")
+    .delete()
+    .eq("id", id)
+    .eq("business_id", business.id)
+    .eq("client_id", profile.id);
   if (error) return fail(error.message);
   revalidatePath(PATH);
   return ok("Entry removed.");
@@ -79,14 +88,16 @@ const photoSchema = z.object({
 });
 
 export async function recordProgressPhoto(input: z.input<typeof photoSchema>): Promise<Result> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const parsed = photoSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid photo" };
   const { storage_path, taken_on, pose } = parsed.data;
   if (!new RegExp(`^${profile.id}/[\\w.-]+$`).test(storage_path)) return { ok: false, error: "Invalid upload path." };
   if (taken_on > todayInTz(profile.timezone)) return { ok: false, error: "That date is in the future." };
   const supabase = await createClient();
-  const { error } = await supabase.from("progress_photos").insert({ client_id: profile.id, storage_path, taken_on, pose });
+  const { error } = await supabase
+    .from("progress_photos")
+    .insert({ business_id: business.id, client_id: profile.id, storage_path, taken_on, pose });
   if (error) return { ok: false, error: error.message };
   revalidatePath(PATH);
   return { ok: true };
@@ -94,13 +105,14 @@ export async function recordProgressPhoto(input: z.input<typeof photoSchema>): P
 
 export async function deleteProgressPhoto(id: string, _: ActionState): Promise<ActionState> {
   void _;
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   if (!uuid.safeParse(id).success) return fail("Not found.");
   const supabase = await createClient();
   const { data: photo } = await supabase
     .from("progress_photos")
     .select("id, storage_path")
     .eq("id", id)
+    .eq("business_id", business.id)
     .eq("client_id", profile.id)
     .maybeSingle();
   if (!photo) return fail("Not found.");
@@ -120,23 +132,31 @@ const habitSchema = z.object({
 });
 
 export async function createHabit(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const parsed = parseForm(habitSchema, formData);
   if (parsed.error) return parsed.error;
   const supabase = await createClient();
-  const { error } = await supabase.from("habits").insert({ client_id: profile.id, ...parsed.data });
+  const { error } = await supabase
+    .from("habits")
+    .insert({ business_id: business.id, client_id: profile.id, created_by: profile.id, ...parsed.data });
   if (error) return fail(error.message);
   revalidatePath(PATH);
   return ok("Habit added.");
 }
 
 export async function toggleHabitDay(habitId: string, date: string, done: boolean): Promise<Result> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   if (!uuid.safeParse(habitId).success || !dateStr.safeParse(date).success) return { ok: false, error: "Invalid habit." };
   const today = todayInTz(profile.timezone);
   if (date > today || date < addDays(today, -13)) return { ok: false, error: "You can only tick the last two weeks." };
   const supabase = await createClient();
-  const { data: habit } = await supabase.from("habits").select("id").eq("id", habitId).eq("client_id", profile.id).maybeSingle();
+  const { data: habit } = await supabase
+    .from("habits")
+    .select("id")
+    .eq("id", habitId)
+    .eq("business_id", business.id)
+    .eq("client_id", profile.id)
+    .maybeSingle();
   if (!habit) return { ok: false, error: "Habit not found." };
   const { error } = done
     ? await supabase.from("habit_logs").upsert({ habit_id: habitId, logged_on: date }, { onConflict: "habit_id,logged_on", ignoreDuplicates: true })
@@ -148,10 +168,15 @@ export async function toggleHabitDay(habitId: string, date: string, done: boolea
 
 export async function archiveHabit(habitId: string, _: ActionState): Promise<ActionState> {
   void _;
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   if (!uuid.safeParse(habitId).success) return fail("Habit not found.");
   const supabase = await createClient();
-  const { error } = await supabase.from("habits").update({ active: false }).eq("id", habitId).eq("client_id", profile.id);
+  const { error } = await supabase
+    .from("habits")
+    .update({ active: false })
+    .eq("id", habitId)
+    .eq("business_id", business.id)
+    .eq("client_id", profile.id);
   if (error) return fail(error.message);
   revalidatePath(PATH);
   return ok("Habit archived.");
@@ -169,13 +194,15 @@ const goalSchema = z.object({
 });
 
 export async function createGoal(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const parsed = parseForm(goalSchema, formData);
   if (parsed.error) return parsed.error;
   const d = parsed.data;
   const supabase = await createClient();
   const { error } = await supabase.from("goals").insert({
+    business_id: business.id,
     client_id: profile.id,
+    created_by: profile.id,
     title: d.title,
     unit: d.unit ?? null,
     start_value: d.start_value,
@@ -191,7 +218,7 @@ export async function createGoal(_: ActionState, formData: FormData): Promise<Ac
 const goalUpdateSchema = z.object({ current_value: optNum(-1e6, 1e6), achieved: zfd.checkbox() });
 
 export async function updateGoal(goalId: string, _: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   if (!uuid.safeParse(goalId).success) return fail("Goal not found.");
   const parsed = parseForm(goalUpdateSchema, formData);
   if (parsed.error) return parsed.error;
@@ -200,6 +227,7 @@ export async function updateGoal(goalId: string, _: ActionState, formData: FormD
     .from("goals")
     .select("id, title, achieved_at")
     .eq("id", goalId)
+    .eq("business_id", business.id)
     .eq("client_id", profile.id)
     .maybeSingle();
   if (!goal) return fail("Goal not found.");
@@ -207,15 +235,15 @@ export async function updateGoal(goalId: string, _: ActionState, formData: FormD
   const { error } = await supabase.from("goals").update({ current_value: parsed.data.current_value, achieved_at }).eq("id", goalId);
   if (error) return fail(error.message);
   if (achieved_at && !goal.achieved_at) {
-    const trainerId = await getClientTrainerId(profile.id);
-    if (trainerId) {
-      await notify({
-        userId: trainerId,
-        type: "goal_achieved",
-        title: `${displayName(profile)} achieved a goal: ${goal.title}`,
-        link: `/coach/clients/${profile.id}`,
-      });
-    }
+    const program = await getActiveProgram(supabase, business.id, profile.id);
+    await notifyResponsibleCoach({
+      businessId: business.id,
+      clientId: profile.id,
+      programCoachId: program?.coach_id,
+      type: "goal_achieved",
+      title: `${displayName(profile)} achieved a goal: ${goal.title}`,
+      link: `/coach/clients/${profile.id}`,
+    });
   }
   revalidatePath(PATH);
   return ok(achieved_at && !goal.achieved_at ? "Goal achieved. Congratulations!" : "Goal updated.");
@@ -223,10 +251,15 @@ export async function updateGoal(goalId: string, _: ActionState, formData: FormD
 
 export async function deleteGoal(goalId: string, _: ActionState): Promise<ActionState> {
   void _;
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   if (!uuid.safeParse(goalId).success) return fail("Goal not found.");
   const supabase = await createClient();
-  const { error } = await supabase.from("goals").delete().eq("id", goalId).eq("client_id", profile.id);
+  const { error } = await supabase
+    .from("goals")
+    .delete()
+    .eq("id", goalId)
+    .eq("business_id", business.id)
+    .eq("client_id", profile.id);
   if (error) return fail(error.message);
   revalidatePath(PATH);
   return ok("Goal removed.");

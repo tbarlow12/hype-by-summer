@@ -4,11 +4,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
-import { captureLead, deliverLeadMagnet, recordLeadEvent } from "@/lib/leads";
-import { notify } from "@/lib/notify";
+import { brandUrl, captureLead, deliverLeadMagnet, notifyLeadOwner, recordLeadEvent } from "@/lib/leads";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { BRAND_NAME, absoluteUrl } from "@/lib/env";
-import { getPrimaryTrainer } from "@/lib/trainer";
+import { brandOf, requireBusiness } from "@/lib/tenant";
 import { consultHref, getPublicSessionTypes } from "@/lib/marketing";
 import { consentText, EXPERIENCE_LEVELS, FORMATS, GOALS, TIMELINES, values, type Option } from "@/lib/leads/options";
 
@@ -36,23 +34,26 @@ const magnetSchema = z.object({
 
 /** Lead-magnet opt-in: capture the lead, email the guide, go to the thank-you page. */
 export async function submitLeadMagnet(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const business = await requireBusiness();
   const parsed = parseForm(magnetSchema, formData);
   if (parsed.error) return parsed.error;
   const input = parsed.data;
 
-  const admin = createAdminClient();
-  const { data: magnet } = await admin
+  // Only this site's own giveaways.
+  const { data: magnet } = await createAdminClient()
     .from("lead_magnets")
-    .select("id, trainer_id, slug, title, thank_you_message, active")
+    .select("id, business_id, slug, title, thank_you_message, active")
     .eq("id", input.magnet_id)
+    .eq("business_id", business.id)
     .maybeSingle();
   if (!magnet?.active) return fail("This guide is no longer available.");
   if (input.website) redirect(`/free/${magnet.slug}/thanks`); // silently drop bots
 
+  const brand = brandOf(business);
   let token: string;
   try {
     const lead = await captureLead({
-      trainerId: magnet.trainer_id,
+      businessId: business.id,
       email: input.email,
       firstName: input.first_name,
       phone: input.phone,
@@ -63,20 +64,15 @@ export async function submitLeadMagnet(_prev: ActionState, formData: FormData): 
       preferredFormat: input.preferred_format,
       timeline: input.timeline,
       marketingConsent: input.marketing_consent,
-      consentText: consentText(BRAND_NAME),
+      consentText: consentText(business.name),
     });
-    const [trainer, types] = await Promise.all([
-      admin.from("trainer_profiles").select("slug").eq("trainer_id", magnet.trainer_id).maybeSingle(),
-      getPublicSessionTypes(magnet.trainer_id),
-    ]);
-    const bookUrl = trainer.data ? absoluteUrl(consultHref(trainer.data, types)) : undefined;
-    ({ token } = await deliverLeadMagnet(lead, magnet, { bookUrl }));
-    await notify({
-      userId: magnet.trainer_id,
+    const types = await getPublicSessionTypes(business.id);
+    const bookUrl = brandUrl(brand, consultHref(business, types));
+    ({ token } = await deliverLeadMagnet(brand, lead, magnet, { bookUrl }));
+    await notifyLeadOwner(lead, {
       type: "lead_captured",
       title: `New lead: ${input.first_name}`,
       body: `${input.email} downloaded "${magnet.title}".`,
-      link: `/coach/leads/${lead.id}`,
     });
   } catch (err) {
     console.error("[leads] magnet opt-in failed", err);
@@ -99,18 +95,16 @@ const contactSchema = z.object({
 
 /** Homepage contact form: lead with source contact_form + the message on its timeline. */
 export async function submitContactForm(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const business = await requireBusiness();
   const parsed = parseForm(contactSchema, formData);
   if (parsed.error) return parsed.error;
   const input = parsed.data;
   if (input.website) return ok("Thanks! We'll be in touch shortly.");
 
-  const trainer = await getPrimaryTrainer();
-  if (!trainer) return fail("We're not taking inquiries just yet. Please check back soon.");
-
   const [firstName, ...rest] = input.name.split(/\s+/);
   try {
     const lead = await captureLead({
-      trainerId: trainer.trainer_id,
+      businessId: business.id,
       email: input.email,
       firstName,
       lastName: rest.join(" ") || undefined,
@@ -121,15 +115,18 @@ export async function submitContactForm(_prev: ActionState, formData: FormData):
       preferredFormat: input.preferred_format,
       timeline: input.timeline,
       marketingConsent: input.marketing_consent,
-      consentText: consentText(BRAND_NAME),
+      consentText: consentText(business.name),
     });
-    await recordLeadEvent(lead.id, "contact_message", { message: input.message, phone: input.phone ?? null });
-    await notify({
-      userId: trainer.trainer_id,
+    await recordLeadEvent({
+      businessId: business.id,
+      leadId: lead.id,
+      type: "contact_message",
+      detail: { message: input.message, phone: input.phone ?? null },
+    });
+    await notifyLeadOwner(lead, {
       type: "lead_message",
       title: `New inquiry from ${input.name}`,
       body: `${input.email}${input.phone ? ` · ${input.phone}` : ""}\n\n${input.message}`,
-      link: `/coach/leads/${lead.id}`,
       email: true,
     });
   } catch (err) {
@@ -139,12 +136,13 @@ export async function submitContactForm(_prev: ActionState, formData: FormData):
   return ok(`Thanks, ${firstName}! Your message is in. Expect a reply within one business day.`);
 }
 
-/** One-click unsubscribe from the link in every marketing email. */
+/** One-click unsubscribe from the link in every marketing email (this business's leads only). */
 export async function unsubscribeAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const business = await requireBusiness();
   const token = String(formData.get("token") ?? "");
   if (!/^[0-9a-f]{20,80}$/i.test(token)) return fail("This unsubscribe link is invalid.");
-  const { data, error } = await createAdminClient().rpc("unsubscribe_lead", { p_token: token });
+  const { data, error } = await createAdminClient().rpc("unsubscribe_lead", { p_token: token, p_business: business.id });
   if (error || !data?.id) return fail("This unsubscribe link is invalid or has expired.");
   revalidatePath(`/unsubscribe/${token}`);
-  return ok("You're unsubscribed. You won't receive any more marketing emails from us.");
+  return ok(`You're unsubscribed. You won't receive any more marketing emails from ${business.name}.`);
 }

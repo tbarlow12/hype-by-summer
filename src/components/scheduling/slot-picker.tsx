@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { formatInTimeZone } from "date-fns-tz";
 import { cn, Select } from "@/components/ui";
 import { addDays, parseDate, weekdayOf } from "@/lib/scheduling/tz";
-import type { Slot, SlotDay } from "@/lib/scheduling/slots";
+import type { TeamSlot, TeamSlotDay } from "@/lib/scheduling/slots";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -38,11 +38,11 @@ function daysInMonth(month: string): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
-type State = { key: string; days: SlotDay[]; error?: string };
+type State = { key: string; days: TeamSlotDay[]; error?: string };
 
 export function SlotPicker({
-  trainerSlug,
   sessionSlug,
+  coach = "any",
   fallbackTimezone,
   initialMonth,
   minMonth,
@@ -51,16 +51,17 @@ export function SlotPicker({
   rescheduleToken,
   showFull = false,
 }: {
-  trainerSlug: string;
   sessionSlug: string;
+  /** "any" or a coach id. */
+  coach?: string;
   /** Used for server render and when the browser zone is unknown. */
   fallbackTimezone: string;
   /** "yyyy-MM" to open on. */
   initialMonth: string;
   /** Earliest month the viewer can navigate back to (default: initialMonth). */
   minMonth?: string;
-  selected: Slot | null;
-  onSelect: (slot: Slot | null, timezone: string) => void;
+  selected: TeamSlot | null;
+  onSelect: (slot: TeamSlot | null, timezone: string) => void;
   rescheduleToken?: string;
   /** Show full group slots (to offer the waitlist). */
   showFull?: boolean;
@@ -75,27 +76,27 @@ export function SlotPicker({
 
   const from = `${month}-01`;
   const to = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
-  const key = `${trainerSlug}|${sessionSlug}|${from}|${tz}|${rescheduleToken ?? ""}`;
+  const key = `${sessionSlug}|${coach}|${from}|${tz}|${rescheduleToken ?? ""}`;
 
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams({ trainer: trainerSlug, session: sessionSlug, from, to, tz });
+    const params = new URLSearchParams({ session: sessionSlug, coach, from, to, tz });
     if (rescheduleToken) params.set("reschedule", rescheduleToken);
     fetch(`/api/availability?${params}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error("Could not load availability");
-        const json = (await res.json()) as { days: SlotDay[] };
+        const json = (await res.json()) as { days: TeamSlotDay[] };
         setState({ key, days: json.days });
       })
       .catch((err: unknown) => {
         if ((err as Error).name !== "AbortError") setState({ key, days: [], error: "We couldn't load available times. Please try again." });
       });
     return () => controller.abort();
-  }, [key, trainerSlug, sessionSlug, from, to, tz, rescheduleToken]);
+  }, [key, sessionSlug, coach, from, to, tz, rescheduleToken]);
 
   const loading = !state || state.key !== key;
   const days = useMemo(() => {
-    if (loading) return [] as SlotDay[];
+    if (loading) return [] as TeamSlotDay[];
     return state.days
       .map((d) => ({ ...d, slots: showFull ? d.slots : d.slots.filter((s) => s.spotsLeft > 0) }))
       .filter((d) => d.slots.length > 0);
@@ -232,7 +233,7 @@ export function SlotPicker({
                   >
                     <span>{formatInTimeZone(slot.start, tz, "h:mm a")}</span>
                     {slot.capacity > 1 ? (
-                      <span className={cn("text-xs font-medium", isSelected ? "text-white/90" : "text-zinc-500")}>
+                      <span className={cn("text-xs font-medium", isSelected ? "text-on-brand/90" : "text-zinc-500")}>
                         {full ? "Full · waitlist" : `${slot.spotsLeft} of ${slot.capacity} left`}
                       </span>
                     ) : null}

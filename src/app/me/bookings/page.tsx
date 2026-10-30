@@ -5,7 +5,7 @@ import { requireClient } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDateTime, formatDuration } from "@/lib/format";
-import { getTrainerSchedulingInfo } from "@/lib/scheduling/availability";
+import { listCoaches, policyOf } from "@/lib/scheduling/availability";
 import { canReschedule, decideCancellation } from "@/lib/scheduling/policy";
 import { LOCATION_LABELS, STATUS_LABELS, STATUS_TONES } from "@/lib/scheduling/labels";
 import { cancelMyBookingAction } from "./actions";
@@ -13,12 +13,13 @@ import { cancelMyBookingAction } from "./actions";
 export const metadata = { title: "My sessions" };
 
 export default async function MyBookingsPage() {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const supabase = await createClient();
   // Hide the superseded half of a reschedule (the new booking is listed instead).
   const { data: bookings } = await supabase
     .from("bookings")
     .select("*")
+    .eq("business_id", business.id)
     .eq("client_id", profile.id)
     .or("cancel_reason.is.null,cancel_reason.neq.rescheduled")
     .order("starts_at", { ascending: false })
@@ -26,15 +27,16 @@ export default async function MyBookingsPage() {
   const all = bookings ?? [];
 
   const typeIds = [...new Set(all.map((b) => b.session_type_id))];
-  const trainerIds = [...new Set(all.map((b) => b.trainer_id))];
-  const [{ data: types }, trainers] = await Promise.all([
+  const [{ data: types }, coaches] = await Promise.all([
     typeIds.length
-      ? createAdminClient().from("session_types").select("id, name, duration_minutes, is_consultation").in("id", typeIds)
+      ? createAdminClient().from("session_types").select("id, name, duration_minutes, is_consultation").eq("business_id", business.id).in("id", typeIds)
       : Promise.resolve({ data: [] as { id: string; name: string; duration_minutes: number; is_consultation: boolean }[] }),
-    Promise.all(trainerIds.map((id) => getTrainerSchedulingInfo(id))),
+    listCoaches(business.id),
   ]);
   const typeById = new Map((types ?? []).map((t) => [t.id, t]));
-  const trainerById = new Map(trainers.filter((t) => t !== null).map((t) => [t.trainer_id, t]));
+  const coachName = new Map(coaches.map((c) => [c.id, c.name]));
+  const showCoach = new Set(all.map((b) => b.coach_id)).size > 1 || coaches.filter((c) => c.isBookable).length > 1;
+  const policy = policyOf(business);
 
   const now = new Date();
   const upcoming = all
@@ -53,11 +55,8 @@ export default async function MyBookingsPage() {
         ) : (
           upcoming.map((b) => {
             const st = typeById.get(b.session_type_id);
-            const trainer = trainerById.get(b.trainer_id);
-            const cancel = trainer
-              ? decideCancellation({ booking: { ...b, is_consultation: st?.is_consultation }, policy: trainer, now, actor: "client" })
-              : null;
-            const resched = trainer ? canReschedule({ booking: b, policy: trainer, now, actor: "client" }) : null;
+            const cancel = decideCancellation({ booking: { ...b, is_consultation: st?.is_consultation }, policy, now, actor: "client" });
+            const resched = canReschedule({ booking: b, policy, now, actor: "client" });
             return (
               <Card key={b.id} className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -65,8 +64,9 @@ export default async function MyBookingsPage() {
                     <p className="font-semibold">{st?.name ?? "Session"}</p>
                     <p className="text-sm text-zinc-600 dark:text-zinc-400">
                       {formatDateTime(b.starts_at, tz, "EEEE, MMM d · h:mm a")} · {formatDuration(st?.duration_minutes ?? 60)}
+                      {showCoach && coachName.get(b.coach_id) ? ` · with ${coachName.get(b.coach_id)}` : ""}
                     </p>
-                    <p className="text-sm text-zinc-500">{b.location_type === "in_person" ? (b.location_details ?? trainer?.default_location ?? "In person") : LOCATION_LABELS[b.location_type]}</p>
+                    <p className="text-sm text-zinc-500">{b.location_type === "in_person" ? (b.location_details ?? business.default_location ?? "In person") : LOCATION_LABELS[b.location_type]}</p>
                   </div>
                   <Badge tone={STATUS_TONES[b.status]}>{STATUS_LABELS[b.status]}</Badge>
                 </div>

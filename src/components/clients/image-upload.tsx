@@ -30,7 +30,12 @@ export function ImageUpload({
   shape?: "circle" | "wide" | "square";
   onChange?: (url: string) => void;
 }) {
-  const [url, setUrl] = useState(defaultUrl ?? "");
+  const [url, setUrlState] = useState(defaultUrl ?? "");
+  const setUrl = (v: string) => {
+    setUrlState(v);
+    onChange?.(v);
+  };
+  const box = shape === "circle" ? "size-16 rounded-full" : shape === "square" ? "size-16 rounded-xl" : "h-20 w-40 rounded-xl";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -64,12 +69,12 @@ export function ImageUpload({
           <img
             src={url}
             alt=""
-            className={shape === "circle" ? "size-16 rounded-full object-cover" : "h-20 w-40 rounded-xl object-cover"}
+            className={`${box} ${shape === "square" ? "bg-white object-contain p-1" : "object-cover"}`}
           />
         ) : (
           <span
             className={
-              (shape === "circle" ? "size-16 rounded-full" : "h-20 w-40 rounded-xl") +
+              box +
               " flex items-center justify-center bg-zinc-100 text-xs text-zinc-400 dark:bg-zinc-800"
             }
           >

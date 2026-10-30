@@ -3,13 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireTrainer } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notify } from "@/lib/notify";
 import { fail, ok, parseForm, zfd, type ActionState } from "@/lib/actions";
 import {
   EXERCISE_FIELDS,
-  isTrainerOf,
+  isClientOf,
+  loadStaff,
   loadWorkout,
   loadWorkouts,
   trySystemMessage,
@@ -18,6 +19,7 @@ import {
   type WorkoutRow,
 } from "@/lib/training/server";
 import { longDateLabel } from "@/lib/training/dates";
+import { exerciseUsableBy } from "@/lib/training/routing";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 const okR = <T,>(data: T): Result<T> => ({ ok: true, data });
@@ -26,30 +28,54 @@ const failR = (error: string): Result<never> => ({ ok: false, error });
 const uuid = z.uuid();
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date");
 
+// Programs and templates belong to the business; any staff member can edit
+// them (coach_id = author / responsible coach). Every lookup is scoped to the
+// current business, never to an id the browser sent alone.
 async function ownedProgram(programId: string) {
-  const profile = await requireTrainer();
+  const { profile, business } = await requireStaff();
   if (!uuid.safeParse(programId).success) return null;
   const supabase = await createClient();
   const { data: program } = await supabase
     .from("programs")
     .select("*")
     .eq("id", programId)
-    .eq("trainer_id", profile.id)
+    .eq("business_id", business.id)
     .maybeSingle();
-  return program ? { profile, supabase, program } : null;
+  return program ? { profile, business, supabase, program } : null;
 }
 
 async function ownedWorkout(workoutId: string) {
-  const profile = await requireTrainer();
+  const { profile, business } = await requireStaff();
   if (!uuid.safeParse(workoutId).success) return null;
   const supabase = await createClient();
   const { data } = await supabase
     .from("program_workouts")
-    .select("id, program_id, week, day, programs!inner(trainer_id, duration_weeks)")
+    .select("id, program_id, week, day, programs!inner(business_id, duration_weeks)")
     .eq("id", workoutId)
-    .eq("programs.trainer_id", profile.id)
+    .eq("programs.business_id", business.id)
     .maybeSingle();
-  return data ? { profile, supabase, workout: data } : null;
+  return data ? { profile, business, supabase, workout: data } : null;
+}
+
+/** A workout_exercises row inside one of the business's programs. */
+async function ownedWorkoutExercise(id: string) {
+  const { business } = await requireStaff();
+  if (!uuid.safeParse(id).success) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("workout_exercises")
+    .select("id, workout:program_workouts!inner(program:programs!inner(business_id))")
+    .eq("id", id)
+    .eq("workout.program.business_id", business.id)
+    .maybeSingle();
+  return data ? { supabase } : null;
+}
+
+/** The chosen coach must be active staff of this business. */
+async function validCoach(businessId: string, coachId: string | undefined | null, fallback: string): Promise<string | null> {
+  if (!coachId) return fallback;
+  const staff = await loadStaff(businessId);
+  return staff.some((m) => m.user_id === coachId) ? coachId : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,26 +90,30 @@ const metaSchema = z.object({
 
 const createSchema = metaSchema.extend({
   client_id: z.union([z.literal(""), uuid]).optional(),
+  coach_id: z.union([z.literal(""), uuid]).optional(),
   start_date: z.union([z.literal(""), dateStr]).optional(),
 });
 
 export async function createProgram(_: ActionState, formData: FormData): Promise<ActionState> {
-  const profile = await requireTrainer();
+  const { profile, business } = await requireStaff();
   const parsed = parseForm(createSchema, formData);
   if (parsed.error) return parsed.error;
-  const { client_id, start_date, ...meta } = parsed.data;
+  const { client_id, start_date, coach_id, ...meta } = parsed.data;
   const supabase = await createClient();
   if (client_id) {
     if (!start_date) return fail("Pick a start date for the client's program.");
-    if (!(await isTrainerOf(supabase, profile.id, client_id))) return fail("That client isn't on your roster.");
+    if (!(await isClientOf(supabase, business.id, client_id))) return fail("That person isn't a client here.");
   }
+  const coachId = await validCoach(business.id, client_id ? coach_id : null, profile.id);
+  if (!coachId) return fail("Pick a coach from your team.");
   const { data, error } = await supabase
     .from("programs")
     .insert({
       ...meta,
       description: meta.description ?? null,
       goal: meta.goal ?? null,
-      trainer_id: profile.id,
+      business_id: business.id,
+      coach_id: coachId,
       client_id: client_id || null,
       start_date: client_id ? start_date : null,
       status: client_id ? "active" : "draft",
@@ -91,22 +121,24 @@ export async function createProgram(_: ActionState, formData: FormData): Promise
     .select("id")
     .single();
   if (error) return fail(error.message);
-  if (client_id) await announceProgram(profile.id, client_id, meta.name, start_date!);
+  if (client_id) await announceProgram(business.id, coachId, client_id, meta.name, start_date!);
   revalidatePath("/coach/programs");
   redirect(`/coach/programs/${data.id}`);
 }
 
-async function announceProgram(trainerId: string, clientId: string, name: string, start: string) {
+async function announceProgram(businessId: string, coachId: string, clientId: string, name: string, start: string) {
+  const coach = (await loadStaff(businessId)).find((m) => m.user_id === coachId);
   await notify({
     userId: clientId,
+    businessId,
     type: "program_assigned",
     title: `New program: ${name}`,
-    body: `Your coach set up “${name}” for you, starting ${longDateLabel(start)}.`,
+    body: `${coach?.full_name?.trim() || "Your coach"} set up “${name}” for you, starting ${longDateLabel(start)}.`,
     link: "/me/plan",
     email: true,
   });
   await trySystemMessage({
-    trainerId,
+    businessId,
     clientId,
     body: `New program assigned: ${name} (starts ${longDateLabel(start)}). Find it under My plan.`,
   });
@@ -137,7 +169,8 @@ export async function updateProgramMeta(programId: string, _: ActionState, formD
       goal: meta.goal ?? null,
       ...(program.client_id && start_date ? { start_date } : {}),
     })
-    .eq("id", programId);
+    .eq("id", programId)
+    .eq("business_id", owned.business.id);
   if (error) return fail(error.message);
   revalidatePath(`/coach/programs/${programId}`);
   return ok("Program details saved.");
@@ -152,23 +185,25 @@ export async function setProgramStatus(programId: string, status: string, _: Act
   void _;
   const owned = await ownedProgram(programId);
   if (!owned) return fail("Program not found.");
-  const { supabase, program, profile } = owned;
+  const { supabase, program, business } = owned;
   const allowed: readonly string[] = program.client_id ? STATUS_FOR.client : STATUS_FOR.template;
   if (!allowed.includes(status)) return fail("Invalid status.");
   const { error } = await supabase
     .from("programs")
     .update({ status: status as "draft" | "active" | "completed" | "archived" })
-    .eq("id", programId);
+    .eq("id", programId)
+    .eq("business_id", business.id);
   if (error) return fail(error.message);
   if (program.client_id && status === "completed") {
     await notify({
       userId: program.client_id,
+      businessId: business.id,
       type: "program_completed",
       title: `You finished ${program.name}!`,
       body: "Nice work. Tell your coach how it went so the next block is even better.",
       link: "/me/plan/feedback",
     });
-    await trySystemMessage({ trainerId: profile.id, clientId: program.client_id, body: `Program completed: ${program.name}.` });
+    await trySystemMessage({ businessId: business.id, clientId: program.client_id, body: `Program completed: ${program.name}.` });
   }
   revalidatePath(`/coach/programs/${programId}`);
   revalidatePath("/coach/programs");
@@ -184,18 +219,18 @@ const assignSchema = z.object({
 export async function assignProgram(templateId: string, _: ActionState, formData: FormData): Promise<ActionState> {
   const owned = await ownedProgram(templateId);
   if (!owned) return fail("Program not found.");
-  const { supabase, program, profile } = owned;
+  const { supabase, program, profile, business } = owned;
   if (program.client_id) return fail("Only templates can be assigned. Save this program as a template first.");
   const parsed = parseForm(assignSchema, formData);
   if (parsed.error) return parsed.error;
   const { client_id, start_date, archive_others } = parsed.data;
-  if (!(await isTrainerOf(supabase, profile.id, client_id))) return fail("That client isn't on your roster.");
+  if (!(await isClientOf(supabase, business.id, client_id))) return fail("That person isn't a client here.");
 
   if (archive_others) {
     await supabase
       .from("programs")
       .update({ status: "completed" })
-      .eq("trainer_id", profile.id)
+      .eq("business_id", business.id)
       .eq("client_id", client_id)
       .eq("status", "active");
   }
@@ -204,9 +239,12 @@ export async function assignProgram(templateId: string, _: ActionState, formData
     p_client: client_id,
     p_start: start_date,
   });
-  if (error) return fail(error.message === "not_your_client" ? "That client isn't on your roster." : error.message);
-  if (program.status === "draft") await supabase.from("programs").update({ status: "active" }).eq("id", templateId);
-  await announceProgram(profile.id, client_id, program.name, start_date);
+  if (error) return fail(error.message === "not_a_client" ? "That person isn't a client here." : error.message);
+  if (program.status === "draft") {
+    await supabase.from("programs").update({ status: "active" }).eq("id", templateId).eq("business_id", business.id);
+  }
+  // assign_program makes the assigning staff member the responsible coach.
+  await announceProgram(business.id, profile.id, client_id, program.name, start_date);
   revalidatePath("/coach/programs");
   redirect(`/coach/programs/${newId}?assigned=1`);
 }
@@ -222,12 +260,33 @@ export async function duplicateProgram(programId: string, _: ActionState): Promi
   redirect(`/coach/programs/${data}`);
 }
 
+const coachSchema = z.object({ coach_id: uuid });
+
+/** Change a program's responsible coach (author for templates). */
+export async function setProgramCoach(programId: string, _: ActionState, formData: FormData): Promise<ActionState> {
+  const owned = await ownedProgram(programId);
+  if (!owned) return fail("Program not found.");
+  const parsed = parseForm(coachSchema, formData);
+  if (parsed.error) return parsed.error;
+  const coachId = await validCoach(owned.business.id, parsed.data.coach_id, owned.profile.id);
+  if (!coachId) return fail("Pick a coach from your team.");
+  const { error } = await owned.supabase
+    .from("programs")
+    .update({ coach_id: coachId })
+    .eq("id", programId)
+    .eq("business_id", owned.business.id);
+  if (error) return fail(error.message);
+  revalidatePath(`/coach/programs/${programId}`);
+  revalidatePath("/coach/programs");
+  return ok("Coach updated.");
+}
+
 export async function deleteProgram(programId: string, _: ActionState): Promise<ActionState> {
   void _;
   const owned = await ownedProgram(programId);
   if (!owned) return fail("Program not found.");
   if (owned.program.client_id) return fail("Client programs keep their history. Archive it instead.");
-  const { error } = await owned.supabase.from("programs").delete().eq("id", programId);
+  const { error } = await owned.supabase.from("programs").delete().eq("id", programId).eq("business_id", owned.business.id);
   if (error) return fail(error.message);
   revalidatePath("/coach/programs");
   redirect("/coach/programs");
@@ -342,9 +401,9 @@ export async function copyWeek(
 export async function addExerciseToWorkout(workoutId: string, exerciseId: string): Promise<Result<WorkoutExerciseRow>> {
   const owned = await ownedWorkout(workoutId);
   if (!owned || !uuid.safeParse(exerciseId).success) return failR("Workout not found.");
-  const { supabase, profile } = owned;
+  const { supabase, business } = owned;
   const { data: exercise } = await supabase.from("exercises").select(EXERCISE_FIELDS).eq("id", exerciseId).maybeSingle();
-  if (!exercise || (exercise.trainer_id && exercise.trainer_id !== profile.id)) return failR("Exercise not found.");
+  if (!exercise || !exerciseUsableBy(exercise, business.id)) return failR("Exercise not found.");
   const { data: siblings } = await supabase.from("workout_exercises").select("sort_order").eq("workout_id", workoutId);
   const sort = Math.max(-1, ...(siblings ?? []).map((s) => s.sort_order)) + 1;
   const defaults =
@@ -375,8 +434,8 @@ const exercisePatch = z
   .partial();
 
 export async function updateWorkoutExercise(id: string, patch: z.input<typeof exercisePatch>): Promise<Result> {
-  await requireTrainer();
-  if (!uuid.safeParse(id).success) return failR("Not found.");
+  const owned = await ownedWorkoutExercise(id);
+  if (!owned) return failR("Not found.");
   const parsed = exercisePatch.safeParse(patch);
   if (!parsed.success) return failR(parsed.error.issues[0]?.message ?? "Invalid input");
   const blank = (v: string | null | undefined) => (v === undefined ? undefined : v?.trim() || null);
@@ -390,18 +449,15 @@ export async function updateWorkoutExercise(id: string, patch: z.input<typeof ex
     notes: blank(d.notes),
     superset_group: blank(d.superset_group)?.toUpperCase() ?? (d.superset_group === undefined ? undefined : null),
   };
-  const supabase = await createClient();
-  // RLS limits updates to exercises inside the trainer's own programs.
-  const { data, error } = await supabase.from("workout_exercises").update(clean).eq("id", id).select("id");
+  const { data, error } = await owned.supabase.from("workout_exercises").update(clean).eq("id", id).select("id");
   if (error) return failR(error.message);
   return data?.length ? okR(undefined) : failR("Not found.");
 }
 
 export async function removeWorkoutExercise(id: string): Promise<Result> {
-  await requireTrainer();
-  if (!uuid.safeParse(id).success) return failR("Not found.");
-  const supabase = await createClient();
-  const { data, error } = await supabase.from("workout_exercises").delete().eq("id", id).select("id");
+  const owned = await ownedWorkoutExercise(id);
+  if (!owned) return failR("Not found.");
+  const { data, error } = await owned.supabase.from("workout_exercises").delete().eq("id", id).select("id");
   if (error) return failR(error.message);
   return data?.length ? okR(undefined) : failR("Not found.");
 }

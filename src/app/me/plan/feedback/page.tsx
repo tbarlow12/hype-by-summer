@@ -29,13 +29,14 @@ function Choice({ name, options, legend }: { name: string; options: [string, str
 }
 
 export default async function ProgramFeedbackPage({ searchParams }: PageProps<"/me/plan/feedback">) {
-  const profile = await requireClient();
+  const { profile, business } = await requireClient();
   const sp = await searchParams;
   const supabase = await createClient();
-  const program = await getActiveProgram(supabase, profile.id);
+  const program = await getActiveProgram(supabase, business.id, profile.id);
   const { data: history } = await supabase
     .from("program_feedback")
-    .select("*, program:programs(name)")
+    .select("*, program:programs(name), responder:profiles!program_feedback_responded_by_fkey(full_name)")
+    .eq("business_id", business.id)
     .eq("client_id", profile.id)
     .order("created_at", { ascending: false })
     .limit(30);

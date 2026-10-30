@@ -4,22 +4,27 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 import { formatMoney } from "@/lib/format";
 import { notify } from "@/lib/notify";
+import { brandOf } from "@/lib/tenant";
 import { getOrCreateStripeCustomer } from "@/lib/payments/customers";
-import { linkClientToTrainer } from "@/lib/payments/shared";
+import { applicationFeeAmount } from "@/lib/payments/fees";
+import { attributeCoach, chargeAccount, linkClientToBusiness, loadBusiness } from "@/lib/payments/shared";
 import type { Database, Json } from "@/lib/supabase/database.types";
 
 type Purpose = Database["public"]["Enums"]["payment_purpose"];
 
 /**
- * Bill a client a custom amount with a Stripe Invoice. The hosted invoice URL
- * is emailed to the client (and shown in their billing page); the webhook
- * (invoice.paid) marks the payment succeeded. Returns the payment id.
+ * Bill a client of a business a custom amount with a Stripe Invoice on the
+ * business's connected account. The hosted invoice URL is emailed (branded)
+ * and shown on the client's billing page; invoice.paid marks the payment
+ * succeeded. Returns the payment id.
  */
 export async function createClientInvoice(input: {
-  trainerId: string;
+  businessId: string;
   clientId: string;
   amountCents: number;
   description: string;
+  /** Commission attribution; defaults to the booking's coach / client's primary coach. */
+  coachId?: string | null;
   currency?: string;
   daysUntilDue?: number;
   purpose?: Purpose;
@@ -28,17 +33,21 @@ export async function createClientInvoice(input: {
 }): Promise<{ paymentId: string; hostedInvoiceUrl: string | null }> {
   if (!Number.isInteger(input.amountCents) || input.amountCents < 50) throw new Error("Amount must be at least $0.50");
   const admin = createAdminClient();
+  const business = await loadBusiness(admin, input.businessId);
+  const { account, opts } = chargeAccount(business);
   const currency = (input.currency ?? "usd").toLowerCase();
   const purpose = input.purpose ?? "invoice";
 
   const { data: client } = await admin.from("profiles").select("id, email, full_name").eq("id", input.clientId).single();
   if (!client) throw new Error("Client not found");
+  const coachId = input.coachId ?? (await attributeCoach(admin, business.id, { bookingId: input.bookingId, clientId: input.clientId }));
 
   const { data: payment, error } = await admin
     .from("payments")
     .insert({
-      trainer_id: input.trainerId,
+      business_id: business.id,
       client_id: input.clientId,
+      coach_id: coachId,
       payer_email: client.email,
       purpose,
       status: "pending",
@@ -46,6 +55,7 @@ export async function createClientInvoice(input: {
       currency,
       description: input.description,
       booking_id: input.bookingId ?? null,
+      stripe_account_id: account,
       metadata: (input.metadata ?? {}) as Json,
     })
     .select("id")
@@ -54,15 +64,17 @@ export async function createClientInvoice(input: {
 
   try {
     const s = stripe();
-    const customer = await getOrCreateStripeCustomer(input.clientId);
+    const customer = await getOrCreateStripeCustomer(business.id, input.clientId, admin);
     const metadata = {
       kind: purpose,
       payment_id: payment.id,
-      trainer_id: input.trainerId,
+      business_id: business.id,
       client_id: input.clientId,
+      ...(coachId ? { coach_id: coachId } : {}),
       ...(input.bookingId ? { booking_id: input.bookingId } : {}),
       ...(input.metadata ?? {}),
     };
+    const fee = applicationFeeAmount(input.amountCents, business);
     const invoice = await s.invoices.create(
       {
         customer,
@@ -73,14 +85,15 @@ export async function createClientInvoice(input: {
         pending_invoice_items_behavior: "exclude",
         currency,
         metadata,
+        ...(fee ? { application_fee_amount: fee } : {}),
       },
-      { idempotencyKey: `invoice:${payment.id}` },
+      { ...opts, idempotencyKey: `invoice:${payment.id}` },
     );
     await s.invoiceItems.create(
       { customer, invoice: invoice.id, amount: input.amountCents, currency, description: input.description, metadata },
-      { idempotencyKey: `invoice-item:${payment.id}` },
+      { ...opts, idempotencyKey: `invoice-item:${payment.id}` },
     );
-    const finalized = await s.invoices.finalizeInvoice(invoice.id, {}, { idempotencyKey: `invoice-finalize:${payment.id}` });
+    const finalized = await s.invoices.finalizeInvoice(invoice.id, {}, { ...opts, idempotencyKey: `invoice-finalize:${payment.id}` });
 
     await admin
       .from("payments")
@@ -91,11 +104,12 @@ export async function createClientInvoice(input: {
       })
       .eq("id", payment.id);
 
-    await linkClientToTrainer(admin, input.trainerId, input.clientId);
+    await linkClientToBusiness(admin, business.id, input.clientId);
 
     const amount = formatMoney(input.amountCents, currency);
     if (finalized.hosted_invoice_url) {
       await sendEmail({
+        brand: brandOf(business),
         to: client.email,
         subject: `Invoice: ${input.description} (${amount})`,
         heading: `You have a new invoice for ${amount}`,
@@ -109,6 +123,7 @@ export async function createClientInvoice(input: {
     }
     await notify({
       userId: input.clientId,
+      businessId: business.id,
       type: "invoice",
       title: `New invoice: ${amount}`,
       body: input.description,

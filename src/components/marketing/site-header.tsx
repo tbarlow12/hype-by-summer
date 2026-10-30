@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { buttonClass } from "@/components/ui";
-import { BRAND_NAME } from "@/lib/env";
 import { CloseOnNavigate } from "./close-on-navigate";
 
 export type SiteNav = {
+  brandName: string;
+  logoUrl: string | null;
   bookHref: string;
-  guideHref: string;
+  /** Null when the business has no free guides. */
+  guideHref: string | null;
   account: { href: string; label: string } | null;
 };
 
@@ -15,14 +17,19 @@ export function SiteHeader({ nav }: { nav: SiteNav }) {
     { href: "/", label: "Home" },
     { href: nav.bookHref, label: "Book" },
     { href: "/pricing", label: "Pricing" },
-    { href: nav.guideHref, label: "Free guide" },
+    ...(nav.guideHref ? [{ href: nav.guideHref, label: "Free guide" }] : []),
   ];
   const account = nav.account ?? { href: "/login", label: "Sign in" };
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-200/70 bg-white/85 backdrop-blur dark:border-zinc-800/70 dark:bg-zinc-950/85">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" className="text-lg font-black tracking-tight text-brand">
-          {BRAND_NAME}
+        <Link href="/" className="flex min-w-0 items-center gap-2 text-lg font-black tracking-tight text-brand">
+          {nav.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={nav.logoUrl} alt={nav.brandName} className="h-9 w-auto max-w-[10rem] object-contain" />
+          ) : (
+            <span className="truncate">{nav.brandName}</span>
+          )}
         </Link>
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
           {links.map((l) => (

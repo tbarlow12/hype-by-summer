@@ -1,5 +1,5 @@
 import { Badge, EmptyState, PageHeader, Table } from "@/components/ui";
-import { requireTrainer } from "@/lib/auth";
+import { requireManager } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime, titleCase } from "@/lib/format";
 import { AUDIENCES, AUDIENCE_LABELS } from "@/lib/comms/broadcast";
@@ -10,18 +10,18 @@ export const metadata = { title: "Broadcasts" };
 const CHANNEL_LABEL: Record<string, string> = { in_app: "In-app", email: "Email", sms: "SMS" };
 
 export default async function BroadcastsPage() {
-  const profile = await requireTrainer();
+  const { profile, business } = await requireManager();
   const supabase = await createClient();
   const { data: history } = await supabase
     .from("broadcasts")
     .select("id, audience, subject, channels, recipient_count, emails_sent, emails_failed, sms_sent, sent_at, created_at")
-    .eq("trainer_id", profile.id)
+    .eq("business_id", business.id)
     .order("created_at", { ascending: false })
     .limit(50);
 
   return (
     <div>
-      <PageHeader title="Broadcasts" description="Send one announcement to a whole group: schedule changes, new programs, promos." />
+      <PageHeader title="Broadcasts" description={`Send one announcement from ${business.name} to a whole group: schedule changes, new programs, promos.`} />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <BroadcastComposer audiences={AUDIENCES.map((a) => ({ value: a, label: AUDIENCE_LABELS[a] }))} />
         <div className="min-w-0">

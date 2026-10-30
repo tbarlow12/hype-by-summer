@@ -82,7 +82,7 @@ export function GuideCover({ title, src, className, small = false }: { title: st
   return (
     <div
       className={cn(
-        "relative flex aspect-[3/4] w-full flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-brand via-rose-600 to-zinc-900 text-white shadow-2xl",
+        "relative flex aspect-[3/4] w-full flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-brand via-brand-dark to-zinc-900 text-white shadow-2xl",
         small ? "p-2" : "p-6",
         className,
       )}
@@ -92,7 +92,7 @@ export function GuideCover({ title, src, className, small = false }: { title: st
       <div className="absolute -right-10 -top-10 size-40 rounded-full bg-white/10" aria-hidden="true" />
       <div className="absolute -bottom-16 -left-8 size-48 rounded-full bg-black/20" aria-hidden="true" />
       {small ? null : (
-        <span className="relative w-fit rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-widest">Free PDF</span>
+        <span className="relative w-fit rounded-full bg-black/35 px-3 py-1 text-xs font-bold uppercase tracking-widest text-white">Free PDF</span>
       )}
       <p className={cn("relative font-black leading-tight tracking-tight text-balance", small ? "line-clamp-5 text-[0.7rem]" : "text-2xl sm:text-3xl")}>
         {title}

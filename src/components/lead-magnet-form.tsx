@@ -4,7 +4,6 @@ import { useId } from "react";
 import { ActionForm, SubmitButton } from "@/components/form";
 import { Checkbox, Field, Input, Select, cn } from "@/components/ui";
 import { submitLeadMagnet } from "@/app/(marketing)/actions";
-import { BRAND_NAME } from "@/lib/env";
 import { consentText, EXPERIENCE_LEVELS, FORMATS, GOALS, TIMELINES, type Option } from "@/lib/leads/options";
 
 export type LeadMagnetFormMagnet = {
@@ -33,11 +32,14 @@ function OptionSelect({ id, name, options, placeholder }: { id: string; name: st
  */
 export function LeadMagnetForm({
   magnet,
+  brandName,
   compact = false,
   tone = "light",
   className,
 }: {
   magnet: LeadMagnetFormMagnet;
+  /** The business's name, used in the marketing-consent wording. */
+  brandName: string;
   compact?: boolean;
   /** "dark" renders labels for a dark background. */
   tone?: "light" | "dark";
@@ -94,7 +96,7 @@ export function LeadMagnetForm({
         </fieldset>
       )}
 
-      <Checkbox name="marketing_consent" label={consentText(BRAND_NAME)} className={tone === "dark" ? "text-zinc-300" : undefined} />
+      <Checkbox name="marketing_consent" label={consentText(brandName)} className={tone === "dark" ? "text-zinc-300" : undefined} />
 
       <SubmitButton size="lg" pendingLabel="Sending your guide…" className="w-full">
         {magnet.cta_label}
