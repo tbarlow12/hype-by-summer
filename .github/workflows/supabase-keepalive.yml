@@ -1,0 +1,35 @@
+# Free-tier Supabase projects are paused after about a week without activity.
+# This runs a tiny read against the public storefront table a few times a day
+# so the project stays awake. It uses the publishable (anon) key, so it can only
+# read what the public site can already read.
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "17 2,10,18 * * *" # 3x a day (UTC), off the top of the hour
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Query Supabase REST API
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "::error::Set the NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY repo secrets."
+            exit 1
+          fi
+          status=$(curl -sS -o response.json -w '%{http_code}' --retry 3 --retry-delay 10 \
+            "${SUPABASE_URL%/}/rest/v1/trainer_profiles?select=slug&limit=1" \
+            -H "apikey: $SUPABASE_KEY")
+          echo "Supabase responded with HTTP $status"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            cat response.json
+            exit 1
+          fi
